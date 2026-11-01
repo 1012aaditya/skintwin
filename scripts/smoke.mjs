@@ -27,7 +27,8 @@ const app = await electron.launch({
 const errors = []
 const watch = (page, name) => {
   page.on('pageerror', (e) => errors.push(`[${name}] ${e.message}`))
-  page.on('console', (m) => m.type() === 'error' && errors.push(`[${name}] console: ${m.text()}`))
+  // MediaPipe's TensorFlow Lite runtime prints routine "INFO:" start-up lines through console.error.
+  page.on('console', (m) => m.type() === 'error' && !/^INFO: /.test(m.text()) && errors.push(`[${name}] console: ${m.text()}`))
 }
 
 const main = await app.firstWindow()

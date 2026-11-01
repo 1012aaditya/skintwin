@@ -1,4 +1,4 @@
-import { AlertTriangle, BarChart3, Camera, Check, Clock, Droplets, Grid3x3, ImageUp, Info, RefreshCcw, ScanFace, Sparkles, Sun, Waves, X } from 'lucide-react'
+import { AlertTriangle, BarChart3, Camera, Check, Clock, Crop, Droplets, Grid3x3, ImageUp, Info, RefreshCcw, ScanFace, Sparkles, Sun, Waves, X } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { label, SKIN_TYPES, type AnalysisMetric, type Concern, type SkinAnalysis, type SkinType } from '@shared/models'
@@ -9,11 +9,14 @@ import { blobToBase64, checkImage, type ImageCheck, coverCrop } from '@renderer/
 import { navigate } from '@renderer/lib/router'
 import { mutate, newRequestId, useDb, useProviders } from '@renderer/lib/store'
 import { toast } from '@renderer/lib/toast'
+import { allOk, firstIssue } from './facecheck'
+import { CAPTURE_ASPECT, checkStill, MIN_CAPTURE_SHORT_SIDE, useFaceGuide, type StillCheck } from './useFaceGuide'
 
 type Phase =
   | { kind: 'idle' }
   | { kind: 'camera' }
-  | { kind: 'preview'; blob: Blob; url: string; check: ImageCheck | null }
+  /** face: undefined while checking, null if the face tracker couldn't load. */
+  | { kind: 'preview'; blob: Blob; url: string; check: ImageCheck | null; face?: StillCheck | null }
   | { kind: 'submitting'; url: string; stage: string; requestId: string }
   | { kind: 'error'; url: string | null; message: string; code?: string }
 
@@ -40,11 +43,6 @@ export const METRIC_TO_CONCERN: Record<string, Concern> = {
   age_spot: 'dark_spots'
 }
 
-/** Matches the capture surface's aspect-[4/5]. */
-const CAPTURE_ASPECT = 4 / 5
-/** YouCam needs ≥480px on the short side; leave headroom. */
-const MIN_CAPTURE_SHORT_SIDE = 720
-
 const STAGE_TEXT: Record<string, string> = {
   starting: 'Preparing your photo…',
   uploading: 'Uploading securely to YouCam…',
@@ -67,7 +65,14 @@ export function Analyze() {
   const latest = db.analyses[0] ?? null
   const [shown, setShown] = useState<SkinAnalysis | null>(latest)
   const videoRef = useRef<HTMLVideoElement>(null)
+  const overlayRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
+  const guide = useFaceGuide(videoRef, overlayRef, phase.kind === 'camera', (photo) => {
+    stopCamera()
+    photo.toBlob((b) => b && void preview(b), 'image/jpeg', 0.92)
+  })
+  const guideOk = guide.status === 'ready' && allOk(guide.checks)
+  const issue = firstIssue(guide.checks)
 
   useEffect(() => setShown((s) => (s && db.analyses.some((a) => a.id === s.id) ? s : (db.analyses[0] ?? null))), [db.analyses])
 
@@ -97,6 +102,10 @@ export function Analyze() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1920 }, height: { ideal: 1080 }, facingMode: 'user' } })
       streamRef.current = stream
+      // Ask the camera not to blur or relight the picture where the platform allows it.
+      const track = stream.getVideoTracks()[0]
+      const caps = (track?.getCapabilities?.() ?? {}) as Record<string, unknown>
+      if (track && 'backgroundBlur' in caps) await track.applyConstraints({ advanced: [{ backgroundBlur: false } as MediaTrackConstraintSet] }).catch(() => undefined)
       await mutate({ type: 'onboarding.update', patch: { permissions: { camera: 'granted' } } })
       setPhase({ kind: 'camera' })
       requestAnimationFrame(() => {
@@ -130,11 +139,17 @@ export function Analyze() {
   }
 
   async function preview(blob: Blob) {
-    const url = URL.createObjectURL(blob)
+    let url = URL.createObjectURL(blob)
     setPhase({ kind: 'preview', blob, url, check: null })
     try {
+      const face = await checkStill(blob).catch(() => null)
+      if (face?.cropped) {
+        URL.revokeObjectURL(url)
+        url = URL.createObjectURL(face.blob)
+        blob = face.blob
+      }
       const check = await checkImage(blob)
-      setPhase({ kind: 'preview', blob, url, check })
+      setPhase({ kind: 'preview', blob, url, check, face })
     } catch {
       setPhase({ kind: 'error', url, message: 'That file couldn’t be read as an image.' })
     }
@@ -173,7 +188,13 @@ export function Analyze() {
         {/* Capture surface */}
         <div className="relative mx-auto aspect-[4/5] w-full max-w-[460px]">
           <div className="absolute inset-0 overflow-hidden rounded-[44%_56%_48%_52%/52%_44%_56%_48%] border-2 border-lilac-200/50 shadow-[0_0_60px_rgb(190_150_255/0.45)]" style={{ background: 'radial-gradient(circle at 40% 30%, #6a4fc2, #2e1f6a)' }}>
-            {phase.kind === 'camera' && <video ref={videoRef} className="h-full w-full -scale-x-100 object-cover" muted playsInline />}
+            {phase.kind === 'camera' && (
+              <>
+                <video ref={videoRef} className="h-full w-full -scale-x-100 object-cover" muted playsInline />
+                {/* lighting heatmap, drawn in the same 4:5 crop and mirrored like the video */}
+                <canvas ref={overlayRef} className="pointer-events-none absolute inset-0 h-full w-full -scale-x-100" />
+              </>
+            )}
             {photoUrl && <img src={photoUrl} alt="Your selfie preview" className="h-full w-full object-cover" />}
             {phase.kind === 'idle' && !photoUrl && (
               <div className="flex h-full flex-col items-center justify-center gap-3 text-ink-soft">
@@ -190,29 +211,40 @@ export function Analyze() {
           </div>
           {/* face guide */}
           {(phase.kind === 'camera' || phase.kind === 'preview') && (
-            <div className="pointer-events-none absolute inset-[10%_15%_14%] rounded-[50%] border-2 border-dashed border-white/50" />
+            <div
+              className={cn(
+                'pointer-events-none absolute inset-[10%_15%_14%] rounded-[50%] border-2 transition-colors duration-300',
+                phase.kind === 'camera' && guideOk ? 'border-solid border-mint-300 shadow-[0_0_24px_rgb(120_240_190/0.5)]' : 'border-dashed border-white/50'
+              )}
+            />
           )}
           {phase.kind === 'camera' && (
-            <p className="pointer-events-none absolute inset-x-0 bottom-[4%] text-center text-[13px] font-medium text-white [text-shadow:0_1px_6px_rgb(0_0_0/0.6)]">Move closer until your face fills the oval</p>
+            <p aria-live="polite" className="pointer-events-none absolute inset-x-4 bottom-[4%] text-center text-[13.5px] font-semibold text-white [text-shadow:0_1px_6px_rgb(0_0_0/0.7)]">
+              {guide.status === 'loading' ? 'Starting the face guide…'
+                : guide.status === 'unavailable' ? 'Move closer until your face fills the oval'
+                : guideOk ? 'Perfect — hold still…'
+                : (issue?.hint ?? 'Bring your face into the oval')}
+            </p>
           )}
+          {phase.kind === 'camera' && guide.status === 'ready' && guide.checks.length > 0 && <CheckList items={guide.checks.map((c) => [c.label, c.ok])} />}
           {phase.kind === 'preview' && phase.check && (
-            <div className="glass absolute top-[18%] left-[-6%] space-y-1.5 rounded-2xl p-3 text-[13px]">
-              {[
+            <CheckList
+              items={[
                 ['Resolution', Math.min(phase.check.width, phase.check.height) >= 480],
-                ['Lighting', phase.check.brightness >= 0.22 && phase.check.brightness <= 0.9],
-                ['File type & size', /^image\/(jpeg|png)$/.test(phase.blob.type) && phase.blob.size <= 10 * 1024 * 1024]
-              ].map(([t, okay]) => (
-                <p key={t as string} className="flex items-center justify-between gap-4">
-                  {t}
-                  {okay ? <Check className="h-4 w-4 text-mint-300" /> : <X className="h-4 w-4 text-rose-300" />}
-                </p>
-              ))}
-            </div>
+                ['File type & size', /^image\/(jpeg|png)$/.test(phase.blob.type) && phase.blob.size <= 10 * 1024 * 1024],
+                ...(phase.face ? phase.face.checks.map((c) => [c.label, c.ok] as [string, boolean]) : [['Lighting', phase.check.brightness >= 0.22 && phase.check.brightness <= 0.9] as [string, boolean]])
+              ]}
+            />
           )}
         </div>
 
-        {phase.kind === 'preview' && phase.check && !phase.check.ok && (
-          <ErrorState title="This photo may not analyse well" body={phase.check.issues.join(' ')} />
+        {phase.kind === 'preview' && phase.face?.cropped && (
+          <p className="flex items-center gap-2 text-[13px] text-lilac-200">
+            <Crop className="h-4 w-4 shrink-0" /> Cropped around your face so it fills the frame, as YouCam needs.
+          </p>
+        )}
+        {phase.kind === 'preview' && phase.check && previewIssues(phase).length > 0 && (
+          <ErrorState title="This photo may not give reliable results" body={previewIssues(phase).join(' · ')} />
         )}
         {phase.kind === 'error' && <ErrorState title="Analysis didn’t complete" body={phase.message} />}
 
@@ -239,9 +271,16 @@ export function Analyze() {
               >
                 Cancel
               </Button>
-              <Button variant="primary" size="icon-lg" aria-label="Capture photo" onClick={capture} className="h-16 w-16 ring-4 ring-lilac-300/40">
-                <Camera className="h-6 w-6" />
-              </Button>
+              <span className="relative grid place-items-center">
+                <Button variant="primary" size="icon-lg" aria-label="Capture photo" title="Takes the photo now. It captures automatically once every check is green." onClick={capture} className="h-16 w-16 ring-4 ring-lilac-300/40">
+                  <Camera className="h-6 w-6" />
+                </Button>
+                {guide.hold > 0 && (
+                  <svg className="pointer-events-none absolute -inset-1.5 -rotate-90" viewBox="0 0 76 76" aria-hidden>
+                    <circle cx="38" cy="38" r="35" fill="none" stroke="var(--color-mint-300, #7ef0be)" strokeWidth="3" strokeLinecap="round" strokeDasharray={2 * Math.PI * 35} strokeDashoffset={2 * Math.PI * 35 * (1 - guide.hold)} />
+                  </svg>
+                )}
+              </span>
             </>
           ) : phase.kind === 'preview' ? (
             <>
@@ -249,7 +288,7 @@ export function Analyze() {
                 <RefreshCcw className="h-4 w-4" /> Retake
               </Button>
               <Button variant="primary" size="lg" disabled={!configured || !phase.check || /^image\/(jpeg|png)$/.test(phase.blob.type) === false} onClick={() => submit(phase.blob, phase.url)}>
-                <Sparkles className="h-4 w-4" /> {providers?.youcam.configured ? 'Analyze with YouCam' : 'Run mock analysis (dev)'}
+                <Sparkles className="h-4 w-4" /> {!providers?.youcam.configured ? 'Run mock analysis (dev)' : previewIssues(phase).length ? 'Analyze anyway' : 'Analyze with YouCam'}
               </Button>
             </>
           ) : phase.kind === 'submitting' ? (
@@ -274,10 +313,37 @@ export function Analyze() {
             </>
           )}
         </div>
-        <p className="text-center text-xs text-ink-faint">Your photo is sent to YouCam only when you press Analyze, and is never saved by SkinTwin.</p>
+        {phase.kind === 'camera' && (
+          <p className="text-center text-xs text-ink-soft">
+            It takes the photo by itself once every check is green. For results you can compare over time, use the same spot and light each time, and turn off <b>Portrait</b> and <b>Studio Light</b> in Control Center › Video Effects — they smooth and relight skin.
+          </p>
+        )}
+        <p className="text-center text-xs text-ink-faint">Your photo is sent to YouCam only when you press Analyze, and is never saved by SkinTwin. Face checks run on this computer.</p>
       </div>
 
       {shown ? <AnalysisResult analysis={shown} /> : <NoResultYet />}
+    </div>
+  )
+}
+
+/** Everything worth fixing before sending this photo, in plain words. */
+function previewIssues(p: Phase): string[] {
+  if (p.kind !== 'preview' || !p.check) return []
+  const face = p.face ? p.face.checks.filter((c) => !c.ok && c.hint).map((c) => c.hint) : []
+  // With face checks available, they replace the whole-photo brightness guess.
+  const basic = p.face ? p.check.issues.filter((i) => !/dark|overexposed/i.test(i)) : p.check.issues
+  return [...basic, ...face]
+}
+
+function CheckList({ items }: { items: [string, boolean][] }) {
+  return (
+    <div className="glass absolute top-[14%] left-[-8%] space-y-1.5 rounded-2xl p-3 text-[13px] max-[700px]:left-2">
+      {items.map(([t, okay]) => (
+        <p key={t} className="flex items-center justify-between gap-4">
+          {t}
+          {okay ? <Check className="h-4 w-4 text-mint-300" aria-label="OK" /> : <X className="h-4 w-4 text-rose-300" aria-label="Needs fixing" />}
+        </p>
+      ))}
     </div>
   )
 }
