@@ -81,7 +81,7 @@ The local file was chosen over a database server because this is single-user and
 
 | Integration | Status |
 |---|---|
-| YouCam skin analysis | **Verified live** (2026-11-01): a real selfie returned all 10 requested metrics plus overall score and skin age, saved as a real (non-mock) result; error codes map to plain-language hints. Camera captures are cropped to the 4:5 preview so the face fills the frame YouCam sees. |
+| YouCam skin analysis | **Verified live** (2026-11-01): a real selfie returned all 10 requested metrics plus overall score, skin age and skin type (`skin_type`, added at no extra unit cost: 11 actions stay in the 9–12 tier), saved as a real (non-mock) result; error codes map to plain-language hints. Camera captures are cropped to the 4:5 preview so the face fills the frame YouCam sees. |
 | Assistant (Claude, `claude-opus-5-5`) | **Verified live** (2026-11-01): structured answer in ~5 s, grounded in the profile and product (verdict, highlights, suggested actions). Also has a server-side refusal fallback, a 60 s timeout and cancellation. Without a key it uses a **rule-based fallback**, labelled as such. |
 | Speech-to-text | **Live, on-device** (Whisper `base.en`, free, no key): verified in the dev app with a recorded clip fed through the real recorder, and in the packaged `.app`. OpenAI or ElevenLabs Scribe optional (not run live). |
 | Text-to-speech | **Live**: on-device macOS voice. ElevenLabs optional (awaiting key). |
@@ -97,7 +97,6 @@ The local file was chosen over a database server because this is single-user and
 ## Known limitations
 
 - **Not verified live:** the cloud STT providers (on-device voice is the default).
-- **Skin type** isn't requested from YouCam (not in the default action list), so it comes from your profile.
 - **Microphone capture** was tested with Chromium's fake microphone (a recorded clip), not a live mic. The OS permission prompt shows the first time you use the mic.
 - **First voice use needs internet once** to download the speech model (~80 MB); after that it works offline. On-device Whisper is English-only by default.
 - The **compatibility score** is a transparent rule-based estimate from ingredient lists, not a clinical assessment. The ingredient reference covers about 30 common actives and flags.

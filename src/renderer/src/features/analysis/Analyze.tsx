@@ -337,6 +337,7 @@ export function AnalysisResult({ analysis }: { analysis: SkinAnalysis }) {
         <ProgressRing value={summary.value} size={160} stroke={12} label={summary.value == null ? '—' : <>{summary.value}<span className="text-base text-ink-soft">/100</span></>} sublabel={summary.label} />
         <div className="flex-1 space-y-2">
           {analysis.skinAge != null && <p className="text-sm text-ink-soft">Estimated skin age: <span className="font-semibold text-ink">{analysis.skinAge}</span></p>}
+          {analysis.skinType && <p className="text-sm text-ink-soft">Skin type: <span className="font-semibold text-ink capitalize">{analysis.skinType}</span></p>}
           {analysis.skinType && <p className="text-sm text-ink-soft">YouCam skin type: <span className="font-semibold text-ink">{label(analysis.skinType)}</span></p>}
           {strengths.length > 0 && (
             <p className="text-[15px]">

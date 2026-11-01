@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { parseYouCamResult, YouCamError, YouCamProvider } from '../src/main/services/youcam'
+import { DEFAULT_SD_ACTIONS, MockSkinAnalysis, normalizeSkinType, parseYouCamResult, YouCamError, YouCamProvider } from '../src/main/services/youcam'
 
 const RESULTS = {
   output: [
@@ -81,5 +81,47 @@ describe('YouCam provider flow', () => {
     vi.stubGlobal('fetch', f)
     await expect(new YouCamProvider('K', 'https://x').analyze(Buffer.from([1]), 'image/gif', new AbortController().signal, () => {})).rejects.toThrow(/JPG or PNG/)
     expect(f).not.toHaveBeenCalled()
+  })
+})
+
+describe('YouCam skin type', () => {
+  it('is requested, staying within the 9–12 action unit tier', () => {
+    expect(DEFAULT_SD_ACTIONS).toContain('skin_type')
+    expect(DEFAULT_SD_ACTIONS.length).toBeLessThanOrEqual(12)
+  })
+  it('maps the spellings YouCam might use onto our four types', () => {
+    expect(normalizeSkinType('Combination')).toBe('combination')
+    expect(normalizeSkinType('oily_skin')).toBe('oily')
+    expect(normalizeSkinType('DRY')).toBe('dry')
+    expect(normalizeSkinType({ whole: 'Normal', t_zone: 'oily' })).toBe('normal')
+    expect(normalizeSkinType('sensitive')).toBeNull()
+    expect(normalizeSkinType(42)).toBeNull()
+  })
+  it('prefers the whole-face answer even when a zone comes first', () => {
+    const a = parseYouCamResult({ output: [{ type: 'all', score: 80 }, { type: 'skin_type', region: 't_zone', skin_type: 'oily' }, { type: 'skin_type', region: 'whole', skin_type: 'Dry' }] }, 't', '')
+    expect(a.skinType).toBe('dry')
+  })
+  it('reads the shape a live v2.1 response used (2026-11-01)', () => {
+    const live = { output: [
+      { type: 'all', score: 89.4 },
+      { mask_urls: ['https://example.com/skin_type_output.png'], type: 'skin_type', region: 'whole', skin_type: 'Normal', url: null },
+      { mask_urls: ['https://example.com/skin_type_t_zone_output.png'], type: 'skin_type', region: 't_zone', skin_type: 'Normal', url: null },
+      { mask_urls: ['https://example.com/skin_type_u_zone_output.png'], type: 'skin_type', region: 'u_zone', skin_type: 'Normal', url: null }
+    ] }
+    const a = parseYouCamResult(live, 't', '')
+    expect(a.skinType).toBe('normal')
+    expect(a.metrics).toEqual([]) // skin type is not a scored metric
+  })
+  it('uses a zone answer only when there is no whole-face one', () => {
+    expect(parseYouCamResult({ output: [{ type: 'all', score: 80 }, { type: 'skin_type', region: 'u_zone', value: 'normal' }] }, 't', '').skinType).toBe('normal')
+  })
+})
+
+describe('mock analysis', () => {
+  it('produces only labelled, scored metrics (no skin_type score)', async () => {
+    const a = await new MockSkinAnalysis().analyze(Buffer.alloc(5000), 'image/jpeg', new AbortController().signal, () => {})
+    expect(a.isMock).toBe(true)
+    expect(a.metrics.map((m) => m.key)).not.toContain('skin_type')
+    expect(a.metrics.every((m) => typeof m.label === 'string' && m.label.length > 0)).toBe(true)
   })
 })

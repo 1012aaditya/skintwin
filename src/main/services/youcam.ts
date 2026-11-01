@@ -24,7 +24,9 @@ export const DEFAULT_SD_ACTIONS = [
   'radiance',
   'wrinkle',
   'dark_circle_v2',
-  'age_spot'
+  'age_spot',
+  // 11 actions stays in the same unit tier as 10 (9–12 → 14 units), so skin type is free.
+  'skin_type'
 ] as const
 
 const METRIC_LABELS: Record<string, string> = {
@@ -82,8 +84,30 @@ interface OutputEntry {
   ui_score?: number
   raw_score?: number
   score?: number
-  skin_type?: string
+  skin_type?: unknown
+  value?: unknown
+  result?: unknown
   region?: string
+}
+
+/**
+ * Live v2.1 responses (checked 2026-11-01) send one entry per region:
+ * { type: 'skin_type', region: 'whole' | 't_zone' | 'u_zone', skin_type: 'Normal' }.
+ * The docs don't pin this down, so other plausible spellings are accepted too and
+ * mapped onto our four types; anything unrecognised is dropped rather than guessed.
+ */
+export function normalizeSkinType(v: unknown): 'oily' | 'dry' | 'combination' | 'normal' | null {
+  if (v && typeof v === 'object') {
+    const o = v as Record<string, unknown>
+    return normalizeSkinType(o['whole'] ?? o['skin_type'] ?? o['type'] ?? o['value'] ?? null)
+  }
+  if (typeof v !== 'string') return null
+  const t = v.toLowerCase()
+  if (/combin|mixed/.test(t)) return 'combination'
+  if (/oil/.test(t)) return 'oily'
+  if (/dry/.test(t)) return 'dry'
+  if (/normal/.test(t)) return 'normal'
+  return null
 }
 
 /** Map a documented JSON-format task result to our model. Only fields present are used. */
@@ -99,7 +123,9 @@ export function parseYouCamResult(results: unknown, taskId: string, now: string)
     if (e.type === 'all') overall = num(e.score ?? e.ui_score)
     else if (e.type === 'skin_age') skinAge = num(e.score ?? e.ui_score)
     else if (e.type === 'skin_type' || e.type === 'hd_skin_type') {
-      if ((!e.region || e.region === 'whole') && typeof e.skin_type === 'string') skinType = e.skin_type
+      // Prefer the whole-face answer over T-zone / U-zone ones.
+      const found = normalizeSkinType(e.skin_type ?? e.value ?? e.result)
+      if (found && (!e.region || e.region === 'whole' || !skinType)) skinType = found
     } else if (e.type in METRIC_LABELS || e.type.startsWith('hd_')) {
       const key = e.type.replace(/^hd_/, '')
       metrics.push({ key, label: METRIC_LABELS[key] ?? key, score: num(e.ui_score), raw: num(e.raw_score) })
@@ -212,7 +238,8 @@ export class MockSkinAnalysis implements SkinAnalysisProvider {
     // Deterministic pseudo-values from the image bytes so retakes vary but nothing is "measured".
     let seed = image.length
     const rand = () => ((seed = (seed * 9301 + 49297) % 233280) / 233280)
-    const metrics = DEFAULT_SD_ACTIONS.map((k) => ({ key: k, label: METRIC_LABELS[k]!, score: Math.round(60 + rand() * 35), raw: null }))
+    // Only scored concerns; skin_type is a category, not a score.
+    const metrics = DEFAULT_SD_ACTIONS.filter((k) => k in METRIC_LABELS).map((k) => ({ key: k, label: METRIC_LABELS[k]!, score: Math.round(60 + rand() * 35), raw: null }))
     return {
       id: `analysis:${randomUUID()}`,
       createdAt: new Date().toISOString(),
