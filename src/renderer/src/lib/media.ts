@@ -37,3 +37,13 @@ export async function checkImage(blob: Blob): Promise<ImageCheck> {
   bmp.close()
   return { ok: issues.length === 0, width, height, issues, brightness }
 }
+
+/** The centred region of a w×h frame that `object-fit: cover` shows at the given aspect. */
+export function coverCrop(w: number, h: number, aspect: number) {
+  if (w / h > aspect) {
+    const cw = Math.round(h * aspect)
+    return { x: Math.round((w - cw) / 2), y: 0, w: cw, h }
+  }
+  const ch = Math.round(w / aspect)
+  return { x: 0, y: Math.round((h - ch) / 2), w, h: ch }
+}

@@ -5,7 +5,7 @@ import { label, SKIN_TYPES, type AnalysisMetric, type Concern, type SkinAnalysis
 import { Badge, Button, Card, ErrorState, ProgressRing, SectionTitle, Spinner } from '@renderer/components/ui'
 import { cn } from '@renderer/lib/cn'
 import { formatDate } from '@renderer/lib/format'
-import { blobToBase64, checkImage, type ImageCheck } from '@renderer/lib/media'
+import { blobToBase64, checkImage, type ImageCheck, coverCrop } from '@renderer/lib/media'
 import { navigate } from '@renderer/lib/router'
 import { mutate, newRequestId, useDb, useProviders } from '@renderer/lib/store'
 import { toast } from '@renderer/lib/toast'
@@ -39,6 +39,11 @@ export const METRIC_TO_CONCERN: Record<string, Concern> = {
   dark_circle: 'dark_circles',
   age_spot: 'dark_spots'
 }
+
+/** Matches the capture surface's aspect-[4/5]. */
+const CAPTURE_ASPECT = 4 / 5
+/** YouCam needs ≥480px on the short side; leave headroom. */
+const MIN_CAPTURE_SHORT_SIDE = 720
 
 const STAGE_TEXT: Record<string, string> = {
   starting: 'Preparing your photo…',
@@ -90,7 +95,7 @@ export function Analyze() {
       return
     }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 960 }, facingMode: 'user' } })
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1920 }, height: { ideal: 1080 }, facingMode: 'user' } })
       streamRef.current = stream
       await mutate({ type: 'onboarding.update', patch: { permissions: { camera: 'granted' } } })
       setPhase({ kind: 'camera' })
@@ -108,13 +113,17 @@ export function Analyze() {
   async function capture() {
     const v = videoRef.current
     if (!v) return
+    // Send exactly what the 4:5 preview shows (object-cover crop), not the whole wide
+    // frame: otherwise a face that fills the guide is small in the uploaded photo.
+    const { x, y, w, h } = coverCrop(v.videoWidth, v.videoHeight, CAPTURE_ASPECT)
+    const scale = Math.max(1, MIN_CAPTURE_SHORT_SIDE / w)
     const c = document.createElement('canvas')
-    c.width = v.videoWidth
-    c.height = v.videoHeight
+    c.width = Math.round(w * scale)
+    c.height = Math.round(h * scale)
     const ctx = c.getContext('2d')!
     ctx.translate(c.width, 0)
     ctx.scale(-1, 1)
-    ctx.drawImage(v, 0, 0)
+    ctx.drawImage(v, x, y, w, h, 0, 0, c.width, c.height)
     stopCamera()
     const blob = await new Promise<Blob>((r) => c.toBlob((b) => r(b!), 'image/jpeg', 0.92))
     await preview(blob)
@@ -181,7 +190,10 @@ export function Analyze() {
           </div>
           {/* face guide */}
           {(phase.kind === 'camera' || phase.kind === 'preview') && (
-            <div className="pointer-events-none absolute inset-[22%_24%_26%] rounded-[50%] border-2 border-dashed border-white/50" />
+            <div className="pointer-events-none absolute inset-[10%_15%_14%] rounded-[50%] border-2 border-dashed border-white/50" />
+          )}
+          {phase.kind === 'camera' && (
+            <p className="pointer-events-none absolute inset-x-0 bottom-[4%] text-center text-[13px] font-medium text-white [text-shadow:0_1px_6px_rgb(0_0_0/0.6)]">Move closer until your face fills the oval</p>
           )}
           {phase.kind === 'preview' && phase.check && (
             <div className="glass absolute top-[18%] left-[-6%] space-y-1.5 rounded-2xl p-3 text-[13px]">

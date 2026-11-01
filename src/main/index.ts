@@ -266,8 +266,11 @@ function registerIpc() {
         e.sender.send('analysis:progress', { requestId: req.requestId, stage })
       )
       if (store.get().settings.privacy.storeAnalysisHistory) store.update((db) => db.analyses.unshift(result))
+      console.info(`[analysis] ${analysisProvider.name} ok: ${result.metrics.length} metrics`)
       return ok(result)
     } catch (err) {
+      // Codes and messages only — never the image.
+      console.warn(`[analysis] failed: ${err instanceof YouCamError ? err.code : (err as Error).name} — ${(err as Error).message}`)
       if (err instanceof YouCamError) return fail(err.message, err.code)
       if ((err as Error).name === 'AbortError') return fail('Analysis cancelled.', 'cancelled')
       return fail('Couldn’t reach the analysis service. Check your connection and try again.', 'network')
