@@ -576,7 +576,11 @@ else {
     })
 
     try {
-      bridgeServer = await startBridge(config.bridgePort, { token: () => store.get().bridge.pairingToken, onMessage: handleBridgeMessage })
+      bridgeServer = await startBridge(config.bridgePort, {
+        token: () => store.get().bridge.pairingToken,
+        pageAccess: () => store.get().onboarding.permissions.pageAccess === 'granted',
+        onMessage: handleBridgeMessage
+      })
     } catch (err) {
       bridgeError = `Browser bridge couldn’t start on port ${config.bridgePort}: ${(err as Error).message}`
       console.warn('[bridge]', bridgeError)

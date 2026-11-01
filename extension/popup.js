@@ -4,6 +4,7 @@ const BRIDGE = 'http://127.0.0.1:47821'
 const $ = (id) => document.getElementById(id)
 let token = null
 let lastProduct = null
+let pageAccess = true
 
 function setStatus(text, kind) {
   const el = $('status')
@@ -26,8 +27,14 @@ async function ping() {
       $('pair').hidden = false
       return false
     }
-    setStatus('Connected', 'ok')
     $('pair').hidden = true
+    pageAccess = data.pageAccess !== false
+    if (!pageAccess) {
+      setStatus('Page access off', 'bad')
+      message('Page access is turned off in SkinTwin. Turn it on in Settings › Browser extension, then try again.', true)
+      return false
+    }
+    setStatus('Connected', 'ok')
     return true
   } catch {
     setStatus('App not running', 'bad')
@@ -53,6 +60,8 @@ async function check() {
   $('check').textContent = 'Reading page…'
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
   try {
+    // Re-check right before reading: the setting may have changed since the popup opened.
+    if (!(await ping())) return
     if (!tab?.id || !/^https?:/.test(tab.url ?? '')) throw new Error('SkinTwin can only read regular web pages (not browser or extension pages).')
     const [injection] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: extractProductFromPage })
     const result = injection?.result

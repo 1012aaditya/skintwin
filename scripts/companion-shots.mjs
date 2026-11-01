@@ -23,7 +23,7 @@ await main.waitForLoadState('domcontentloaded')
 await main.evaluate(async () => {
   const m = window.skintwin.db.mutate
   await m({ type: 'profile.update', patch: { skinType: 'oily', sensitivity: 'moderate', concerns: ['acne', 'excess_oil', 'visible_pores'], goals: ['clear_skin', 'oil_balance', 'hydration'], preferences: ['fragrance_free', 'non_comedogenic'] } })
-  await m({ type: 'onboarding.update', patch: { completed: true } })
+  await m({ type: 'onboarding.update', patch: { completed: true, permissions: { pageAccess: 'granted' } } })
   for (const id of ['demo:cerave-hydrating-cleanser', 'demo:cerave-moisturizing-cream', 'demo:lrp-anthelios']) {
     await m({ type: 'inventory.add', productId: id })
     await m({ type: 'routine.addStep', period: 'am', productId: id })

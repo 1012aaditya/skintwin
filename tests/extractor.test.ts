@@ -42,3 +42,31 @@ describe('product page extractor', () => {
     expect(r.ok && r.product).toMatchObject({ title: 'Barrier Cream 50 ml', price: 1250, currency: 'INR', method: 'heuristic', sizeText: '50 ml' })
   })
 })
+
+describe('extractor on tricky real-world layouts', () => {
+  const run = async (html: string, title = '') => {
+    document.documentElement.innerHTML = html
+    document.title = title
+    const { extractProductFromPage } = await import('../extension/extractor.js')
+    return extractProductFromPage()
+  }
+
+  it('ignores menu text under a "Key Ingredients" filter label', async () => {
+    const r = await run(`<h1>Daily Lotion</h1><span class="price">$14.99</span>
+      <nav><div><span>Key Ingredients</span><div>Skin Type, Concern, Key Benefits, Key Ingredients, Texture, Hyaluronic Acid, Ceramides, Niacinamide, Water-based gel cream for oily skin that feels light all day</div></div></nav>`)
+    if (!r.ok) throw new Error(r.reason)
+    expect(r.product.ingredientsText).toBeNull()
+  })
+
+  it('finds an unlabelled INCI list that starts with water', async () => {
+    const r = await run(`<h1>Daily Lotion</h1><span class="price">$14.99</span>
+      <div><p>AQUA / WATER / EAU, GLYCERIN, CAPRYLIC/CAPRIC TRIGLYCERIDE, CETEARYL ALCOHOL, CETYL ALCOHOL, DIMETHICONE, PHENOXYETHANOL, CERAMIDE NP, SODIUM HYALURONATE</p></div>`)
+    if (!r.ok) throw new Error(r.reason)
+    expect(r.product.ingredientsText).toMatch(/^AQUA \/ WATER/)
+  })
+
+  it('does not treat a 404 page with a price widget as a product', async () => {
+    const r = await run(`<h1>Page not found</h1><span class="price">₹269</span>`, 'Page not found')
+    expect(r.ok).toBe(false)
+  })
+})

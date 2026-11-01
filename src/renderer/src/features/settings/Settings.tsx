@@ -226,8 +226,8 @@ function PrivacySettings() {
         <Toggle checked={p.sendProfileToAssistant} onChange={(x) => set({ sendProfileToAssistant: x })} label="Share my skin profile with the assistant" description="Off: answers are less personal; your profile isn’t sent to the AI provider." />
         <Toggle checked={p.storeConversations} onChange={(x) => set({ storeConversations: x })} label="Keep conversation history" description="Turning this off deletes existing history." />
         <Toggle checked={p.storeAnalysisHistory} onChange={(x) => set({ storeAnalysisHistory: x })} label="Keep analysis history" description="Off: new analysis results are shown but not saved." />
-        <div className="grid grid-cols-4 gap-3 text-[13px]">
-          {(['microphone', 'camera', 'pageAccess', 'notifications'] as const).map((k) => (
+        <div className="grid grid-cols-3 gap-3 text-[13px]">
+          {(['microphone', 'camera', 'pageAccess'] as const).map((k) => (
             <div key={k} className="glass-inset rounded-2xl p-3">
               <p className="text-ink-soft">{k === 'pageAccess' ? 'Browser page access' : k[0]!.toUpperCase() + k.slice(1)}</p>
               <p className="mt-1 font-semibold capitalize">{perms[k]}</p>
@@ -251,6 +251,8 @@ function PrivacySettings() {
 }
 
 function BrowserSettings() {
+  const db = useDb()
+  const allowed = db.onboarding.permissions.pageAccess === 'granted'
   const [info, setInfo] = useState<{ port: number; token: string; running: boolean; error: string | null } | null>(null)
   const [copied, setCopied] = useState(false)
   useEffect(() => void window.skintwin.bridge.info().then(setInfo), [])
@@ -264,6 +266,14 @@ function BrowserSettings() {
           <li>Click the SkinTwin icon in your browser toolbar and paste the pairing code below.</li>
           <li>On any product page, click the icon → <b>Check this product</b>.</li>
         </ol>
+      </Card>
+      <Card className="p-6">
+        <Toggle
+          checked={allowed}
+          onChange={(x) => mutate({ type: 'onboarding.update', patch: { permissions: { pageAccess: x ? 'granted' : 'skipped' } } })}
+          label="Let the extension send product pages to SkinTwin"
+          description={allowed ? 'The extension reads a page only when you click it there.' : 'Off: the extension won’t read pages, and SkinTwin refuses anything it sends.'}
+        />
       </Card>
       <Card className="space-y-4 p-6">
         <CardHeader icon={<KeyRound />} title="Pairing code" subtitle="Keeps other apps and web pages from talking to SkinTwin." />

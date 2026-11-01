@@ -73,6 +73,7 @@ await clickText(main, 'Moderate')
 await clickText(main, 'Continue')
 for (const chip of ['Fragrance-free', 'Non-comedogenic']) await clickText(main, chip)
 await clickText(main, 'Continue')
+await clickText(main, 'I’ll set it up') // allow browser page access
 await shot(main, '03-onboarding-permissions')
 await clickText(main, 'Continue')
 await shot(main, '04-onboarding-analysis')

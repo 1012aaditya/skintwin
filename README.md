@@ -85,7 +85,7 @@ The local file was chosen over a database server because this is single-user and
 | Assistant (Claude, `claude-opus-5-5`) | **Verified live** (2026-11-01): structured answer in ~5 s, grounded in the profile and product (verdict, highlights, suggested actions). Also has a server-side refusal fallback, a 60 s timeout and cancellation. Without a key it uses a **rule-based fallback**, labelled as such. |
 | Speech-to-text | **Live, on-device** (Whisper `base.en`, free, no key): verified in the dev app with a recorded clip fed through the real recorder, and in the packaged `.app`. OpenAI or ElevenLabs Scribe optional (not run live). |
 | Text-to-speech | **Live**: on-device macOS voice. ElevenLabs optional (awaiting key). |
-| Browser extension + bridge | **Live and tested** (token auth, origin check, schema validation, extractor tests). |
+| Browser extension + bridge | **Live and tested** (token auth, origin check, schema validation). The page reader was run on real product pages (The Ordinary, CeraVe), and a real CeraVe product went bridge → companion → live Claude analysis. It refuses everything while **Settings › Browser extension › page access** is off. The toolbar click itself needs a person, so test it once by hand. |
 | Product catalog / marketplace | **Demo data only**, labelled everywhere: key ingredients only and illustrative prices. "Visit" opens brand homepages. There are no partnerships, offers or in-app checkout. |
 
 ## Test results (this build)

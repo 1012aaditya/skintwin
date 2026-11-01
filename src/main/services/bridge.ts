@@ -7,6 +7,7 @@ import { BridgeMessageSchema, PROTOCOL_VERSION, type BridgeMessage } from '@shar
  *  - Binds to 127.0.0.1 only (not reachable from the network).
  *  - Only chrome-extension:// origins pass CORS; web pages cannot call it.
  *  - Every event requires the pairing token shown in SkinTwin › Settings.
+ *  - Events are refused while the user has browser page access turned off.
  *  - Bodies are size-capped and validated against the typed protocol.
  */
 
@@ -14,6 +15,8 @@ const MAX_BODY = 64 * 1024
 
 export interface BridgeHandlers {
   token: () => string
+  /** Whether the user allows pages to be sent (Settings › Browser extension). Defaults to true. */
+  pageAccess?: () => boolean
   onMessage: (msg: BridgeMessage) => Promise<{ productId?: string }>
 }
 
@@ -69,11 +72,15 @@ export function createBridgeHandler(h: BridgeHandlers) {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1')
     if (req.method === 'GET' && url.pathname === '/v1/ping') {
       const auth = req.headers.authorization?.replace(/^Bearer /, '')
-      return send(res, 200, { ok: true, app: 'skintwin', protocol: PROTOCOL_VERSION, paired: tokenOk(auth, h.token()) }, corsOrigin)
+      const paired = tokenOk(auth, h.token())
+      // Only a paired extension learns the page-access setting.
+      return send(res, 200, { ok: true, app: 'skintwin', protocol: PROTOCOL_VERSION, paired, ...(paired ? { pageAccess: h.pageAccess?.() ?? true } : {}) }, corsOrigin)
     }
     if (req.method === 'POST' && url.pathname === '/v1/events') {
       const auth = req.headers.authorization?.replace(/^Bearer /, '')
       if (!tokenOk(auth, h.token())) return send(res, 401, { ok: false, error: 'Not paired — paste the pairing code from SkinTwin settings.' }, corsOrigin)
+      if (h.pageAccess && !h.pageAccess())
+        return send(res, 403, { ok: false, code: 'page_access_off', error: 'Browser page access is turned off in SkinTwin. Turn it on in Settings › Browser extension.' }, corsOrigin)
       let json: unknown
       try {
         json = JSON.parse(await readBody(req))

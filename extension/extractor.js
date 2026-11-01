@@ -100,7 +100,26 @@ export function extractProductFromPage() {
   }
 
   // ---------- 4. Ingredients (scoped heuristic) ----------
-  const looksLikeInci = (t) => t && t.split(',').length >= 4 && t.length < 6000 && /(aqua|water|glycerin|alcohol|acid|extract|oil|niacinamide|phenoxyethanol)/i.test(t)
+  // An INCI list is mostly short comma-separated names; menus and marketing copy aren't.
+  const looksLikeInci = (t) => {
+    if (!t || t.length >= 6000 || !/(aqua|water|glycerin|alcohol|acid|extract|oil|niacinamide|phenoxyethanol)/i.test(t)) return false
+    const parts = t.split(',').map((x) => x.trim()).filter(Boolean)
+    if (parts.length < 4) return false
+    const nameLike = parts.filter((x) => x.length <= 60 && x.split(/\s+/).length <= 6).length
+    // INCI names mostly carry chemical-looking words (…ate, …ide, glycol, extract, …).
+    const chemical = parts.filter((x) => /(aqua|water|glycer|alcohol|acid|extract|oil|glycol|gum|wax|butter|parfum|fragrance|paraben|silica|mica|[a-z](ate|ide|ides|one|ol|ine|ane|ene|ose|yl|ium)\b)/i.test(x)).length
+    return nameLike / parts.length >= 0.8 && chemical / parts.length >= 0.5
+  }
+  /** The most specific element inside `root` whose text reads as an ingredient list. */
+  const findInci = (root) => {
+    if (!root) return null
+    let best = null
+    for (const el of [root, ...[...root.querySelectorAll('*')].slice(0, 400)]) {
+      const t = clean(el.textContent?.replace(/^\s*(full\s+|key\s+)?ingredients?\s*(list)?\s*:?/i, ''), 6000)
+      if (looksLikeInci(t) && (!best || t.length < best.length)) best = t
+    }
+    return best
+  }
   let ingredientsText = ld?.ingredientsText || null
   if (!ingredientsText) {
     const labels = [...document.querySelectorAll('h1,h2,h3,h4,h5,button,summary,strong,b,dt,th,span,div,p,li,a')].filter((el) => {
@@ -116,8 +135,8 @@ export function extractProductFromPage() {
       const controls = el.getAttribute('aria-controls')
       if (controls) candidates.unshift(document.getElementById(controls))
       for (const c of candidates) {
-        const t = clean(c?.textContent?.replace(/^\s*(full\s+)?ingredients?\s*:?/i, ''), 6000)
-        if (looksLikeInci(t)) {
+        const t = findInci(c)
+        if (t) {
           ingredientsText = t
           break
         }
@@ -137,8 +156,27 @@ export function extractProductFromPage() {
     }
   }
 
+  if (!ingredientsText) {
+    // Unlabelled lists (e.g. "AQUA / WATER, GLYCERIN, …" in a collapsed panel). Stricter:
+    // a long list that starts with water, so marketing copy can't match.
+    let best = null
+    for (const el of [...document.querySelectorAll('p,div,span,li,td,dd')].slice(0, 4000)) {
+      if (el.children.length > 3) continue
+      const t = clean(el.textContent, 6000)
+      if (!t || (best && t.length >= best.length)) continue
+      const head = t.split(',').slice(0, 3).join(',')
+      if (t.split(',').length >= 8 && /\b(aqua|water|eau)\b/i.test(head) && looksLikeInci(t)) best = t
+    }
+    ingredientsText = best
+  }
+
   // ---------- 5. Heuristic title / price ----------
   const h1 = clean(document.querySelector('h1')?.textContent, 300)
+  // Error and block pages often still show a price widget; never call them products.
+  const errorPage = /\b(page not found|not found|404|access denied|forbidden|something went wrong)\b/i
+  if (!ld?.title && !md?.title && (errorPage.test(document.title) || errorPage.test(h1 || ''))) {
+    return { ok: false, reason: 'This looks like an error page, not a product. Open the product page and try again.' }
+  }
   let hPrice = null
   for (const el of document.querySelectorAll('[class*="price" i],[id*="price" i],[data-testid*="price" i]')) {
     const t = el.textContent || ''

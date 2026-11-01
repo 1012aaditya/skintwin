@@ -68,3 +68,42 @@ describe('protocol helpers', () => {
     expect(BridgeMessageSchema.safeParse({ v: 2, type: 'product_detected', product }).success).toBe(false)
   })
 })
+
+describe('browser page access setting', () => {
+  let gated: Server
+  let url: string
+  let allowed = false
+  const handler = vi.fn(async () => ({ productId: 'web:2' }))
+
+  beforeAll(async () => {
+    gated = createServer(createBridgeHandler({ token: () => TOKEN, pageAccess: () => allowed, onMessage: handler }))
+    await new Promise<void>((r) => gated.listen(0, '127.0.0.1', r))
+    url = `http://127.0.0.1:${(gated.address() as AddressInfo).port}`
+  })
+  afterAll(() => gated.close())
+
+  const send = (body: unknown) =>
+    fetch(`${url}/v1/events`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` }, body: JSON.stringify(body) })
+
+  it('refuses products and failure reports while page access is off', async () => {
+    allowed = false
+    for (const body of [{ v: 1, type: 'product_detected', product }, { v: 1, type: 'product_detection_failed', url: 'https://shop.example.com/x', reason: 'none' }]) {
+      const res = await send(body)
+      expect(res.status).toBe(403)
+      expect(await res.json()).toMatchObject({ code: 'page_access_off' })
+    }
+    expect(handler).not.toHaveBeenCalled()
+  })
+
+  it('tells a paired extension the setting, and only a paired one', async () => {
+    allowed = false
+    expect(await (await fetch(`${url}/v1/ping`, { headers: { Authorization: `Bearer ${TOKEN}` } })).json()).toMatchObject({ paired: true, pageAccess: false })
+    expect(await (await fetch(`${url}/v1/ping`)).json()).not.toHaveProperty('pageAccess')
+  })
+
+  it('accepts products once page access is turned on', async () => {
+    allowed = true
+    expect((await send({ v: 1, type: 'product_detected', product })).status).toBe(200)
+    expect(handler).toHaveBeenCalledTimes(1)
+  })
+})
