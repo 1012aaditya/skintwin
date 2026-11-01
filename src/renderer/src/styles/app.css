@@ -1,0 +1,105 @@
+@import 'tailwindcss';
+
+/* ---------- Design tokens ---------- */
+@theme {
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', 'Segoe UI', system-ui, sans-serif;
+
+  --color-ink: #f7f3ff;
+  --color-ink-soft: rgb(240 232 255 / 0.74);
+  --color-ink-faint: rgb(232 222 255 / 0.5);
+  --color-night: #1d1546;
+  --color-dusk: #2b1f5e;
+  --color-lilac-50: #f5f0ff;
+  --color-lilac-200: #ddd0ff;
+  --color-lilac-300: #c4b0ff;
+  --color-lilac-400: #a98bff;
+  --color-lilac-500: #8f6bff;
+  --color-lilac-600: #7650f0;
+  --color-blush-300: #f9b8de;
+  --color-blush-400: #f39bd0;
+  --color-mint-300: #7ff0b0;
+  --color-mint-400: #4ade80;
+  --color-amber-300: #fcd57a;
+  --color-rose-400: #fb7194;
+
+  --radius-card: 28px;
+  --radius-tile: 20px;
+  --radius-pill: 999px;
+
+  --shadow-glass: 0 10px 40px -12px rgb(20 8 60 / 0.55), inset 0 1px 0 rgb(255 255 255 / 0.14);
+  --shadow-glow: 0 0 0 1px rgb(196 176 255 / 0.5), 0 0 28px rgb(169 139 255 / 0.55);
+  --shadow-glow-soft: 0 0 24px rgb(169 139 255 / 0.28);
+
+  --animate-float: float 6s ease-in-out infinite;
+  --animate-spin-slow: spin 9s linear infinite;
+}
+
+:root {
+  --glass-bg: rgb(255 255 255 / 0.075);
+  --glass-bg-strong: rgb(43 30 100 / 0.62);
+  --glass-border: rgb(255 255 255 / 0.15);
+  --glass-blur: 22px;
+  --duration-fast: 140ms;
+  --duration-base: 240ms;
+  --duration-slow: 480ms;
+  --z-nav: 30;
+  --z-overlay: 50;
+  --z-toast: 70;
+  --focus-ring: 0 0 0 2px rgb(29 21 70), 0 0 0 4px rgb(196 176 255);
+  color-scheme: dark;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0) }
+  50% { transform: translateY(-6px) }
+}
+
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  color: var(--color-ink);
+  background: #241a55;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  user-select: none;
+}
+html.companion body { background: transparent; }
+input, textarea, select, [contenteditable] { user-select: text; }
+
+*:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: 12px; }
+
+/* ---------- Glass surfaces ---------- */
+@utility glass {
+  background: linear-gradient(160deg, rgb(255 255 255 / 0.11), rgb(255 255 255 / 0.045));
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+  box-shadow: var(--shadow-glass);
+}
+@utility glass-strong {
+  background: linear-gradient(160deg, rgb(92 70 190 / 0.72), rgb(44 30 104 / 0.82));
+  border: 1px solid rgb(214 198 255 / 0.28);
+  backdrop-filter: blur(30px) saturate(160%);
+  box-shadow: 0 20px 60px -20px rgb(10 4 40 / 0.7), inset 0 1px 0 rgb(255 255 255 / 0.18), 0 0 40px rgb(150 110 255 / 0.25);
+}
+@utility glass-inset {
+  background: rgb(255 255 255 / 0.06);
+  border: 1px solid rgb(255 255 255 / 0.1);
+}
+@utility text-gradient {
+  background: linear-gradient(100deg, #fff 10%, #e2d4ff 45%, #c9a6ff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+@utility drag { -webkit-app-region: drag; }
+@utility no-drag { -webkit-app-region: no-drag; }
+@utility scroll-area {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgb(255 255 255 / 0.2) transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="popup.css" />
+    <title>SkinTwin</title>
+  </head>
+  <body>
+    <header>
+      <div class="orb" aria-hidden="true"></div>
+      <strong>SkinTwin</strong>
+      <span id="status" class="pill">Checking…</span>
+    </header>
+
+    <section id="pair" hidden>
+      <p class="muted">Paste the pairing code from <b>SkinTwin › Settings › Browser extension</b>.</p>
+      <form id="pairForm">
+        <input id="token" placeholder="Pairing code" autocomplete="off" spellcheck="false" />
+        <button type="submit">Pair</button>
+      </form>
+    </section>
+
+    <section id="main">
+      <p class="muted" id="intro">SkinTwin will read this page’s product details (name, brand, price, ingredients, image) — only this tab, only now.</p>
+      <button id="check" class="primary">Check this product</button>
+      <div id="result" hidden>
+        <div class="card">
+          <img id="img" alt="" hidden />
+          <div>
+            <p id="brand" class="muted small"></p>
+            <p id="title" class="title"></p>
+            <p id="meta" class="muted small"></p>
+          </div>
+        </div>
+        <div class="row">
+          <button id="analyze" class="primary">Is this good for my skin?</button>
+          <button id="compare">Compare</button>
+        </div>
+      </div>
+      <p id="message" class="message" hidden></p>
+    </section>
+
+    <footer>
+      <button id="repair" class="link">Change pairing code</button>
+    </footer>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

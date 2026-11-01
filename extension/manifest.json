@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "SkinTwin — Product Check",
+  "version": "0.1.0",
+  "description": "Send the skincare product you're viewing to your SkinTwin desktop companion. Reads the current page only when you click.",
+  "action": { "default_popup": "popup.html", "default_title": "Check this product with SkinTwin" },
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": ["http://127.0.0.1:47821/*"],
+  "content_security_policy": { "extension_pages": "script-src 'self'; object-src 'self'" }
+}
