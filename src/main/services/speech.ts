@@ -1,6 +1,9 @@
+import { decodeWav } from '@shared/wav'
+
 /**
  * Speech providers. Audio is sent to the configured provider only for the request
- * in flight and is never written to disk or logged.
+ * in flight and is never written to disk or logged. The on-device provider keeps
+ * audio on this computer entirely.
  */
 
 export interface SpeechToText {
@@ -56,6 +59,51 @@ export class OpenAITranscriber implements SpeechToText {
     if (!res.ok) await failFrom(res, 'OpenAI transcription')
     const data = (await res.json()) as { text?: string }
     return (data.text ?? '').trim()
+  }
+}
+
+type Asr = (audio: Float32Array) => Promise<{ text: string } | { text: string }[]>
+
+/** Whisper's placeholders for silence or noise, e.g. "[BLANK_AUDIO]" or "(music)". */
+const NON_SPEECH = /\[[^\]]*\]|\([^)]*\)/g
+
+/**
+ * Whisper running on this computer (ONNX via transformers.js). Free, no key, and
+ * audio never leaves the machine. The model (~80 MB) downloads once into cacheDir.
+ * Expects 16 kHz mono WAV, which the renderer produces.
+ */
+export class LocalWhisperTranscriber implements SpeechToText {
+  readonly name = 'On-device Whisper'
+  private loading: Promise<Asr> | null = null
+  constructor(
+    private cacheDir: string,
+    private model = 'onnx-community/whisper-base.en'
+  ) {}
+
+  /** Loads the model, downloading it the first time. Safe to call repeatedly. */
+  warmUp(): Promise<Asr> {
+    this.loading ??= (async () => {
+      const { pipeline, env } = await import('@huggingface/transformers')
+      env.cacheDir = this.cacheDir
+      const asr = await pipeline('automatic-speech-recognition', this.model, { dtype: 'q8', device: 'cpu' })
+      return asr as unknown as Asr
+    })().catch((err: unknown) => {
+      this.loading = null // let the next request retry, e.g. after a network blip
+      throw err
+    })
+    return this.loading
+  }
+
+  async transcribe(audio: Buffer, mimeType: string, signal: AbortSignal) {
+    if (!mimeType.includes('wav')) throw new SpeechError('On-device transcription needs WAV audio.')
+    const { pcm, sampleRate } = decodeWav(audio)
+    if (sampleRate !== 16_000) throw new SpeechError(`Expected 16 kHz audio, got ${sampleRate} Hz.`)
+    const asr = await this.warmUp()
+    signal.throwIfAborted()
+    const out = await asr(pcm)
+    signal.throwIfAborted()
+    const text = Array.isArray(out) ? out.map((o) => o.text).join(' ') : out.text
+    return text.replace(NON_SPEECH, ' ').replace(/\s+/g, ' ').trim()
   }
 }
 

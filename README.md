@@ -26,14 +26,14 @@ cp .env.example .env                     # optional: add API keys
 npm run dev
 ```
 
-With no keys at all the app still works: the demo catalog, rule-based product matching, routines, inventory and a clearly-labelled *mock* skin analysis are all available in dev mode.
+With no keys at all the app still works, including voice input (on-device Whisper): the demo catalog, rule-based product matching, routines, inventory and a clearly-labelled *mock* skin analysis are all available in dev mode.
 
 | Command | What it does |
 |---|---|
 | `npm run dev` | Run with hot reload (demo catalog + mocks on) |
 | `npm run build` | Production build into `out/` |
 | `npm run package:mac` | Build an unsigned `SkinTwin.app` into `dist/app/` |
-| `npm run typecheck` / `npm run lint` / `npm test` | Static checks + 58 unit/integration tests |
+| `npm run typecheck` / `npm run lint` / `npm test` | Static checks + 66 unit/integration tests |
 | `npm run smoke` | Launches the real app (temp data folder), clicks through journeys A–I, writes screenshots to `dist/smoke/` |
 
 **Browser extension:** `chrome://extensions` → Developer mode → *Load unpacked* → pick the `extension/` folder → click the toolbar icon and paste the pairing code from **Settings › Browser extension**.
@@ -69,7 +69,7 @@ Onboarding (7 steps, resumable, every permission optional) · Discover · Skin A
 
 `idle` → `listening` → `processing` → `responding`, plus `product_detected`, `product_analysis`, `comparison`, `quick_actions`, `profile_peek`, `permission_required`, `error`. The reducer (`companion/machine.ts`) tags every request with an id: stale or cancelled responses are dropped, and you can't submit twice while it's thinking. Orb states use a compact window; everything else expands it. It has pin/unpin, minimize, hide, drag (anywhere on the background), Esc to cancel, ⌘↵ to send, and push-to-talk or click-to-toggle.
 
-Voice pipeline: mic opens only on activation → `MediaRecorder` (real audio-level waveform) → STT provider → context built from profile/routine/inventory/product (only what's needed; the profile can be withheld in Privacy settings) → Claude with structured output → spoken with the macOS system voice or ElevenLabs → conversation and actions saved. Without an STT key, the companion says so and switches to typing.
+Voice pipeline: mic opens only on activation → `MediaRecorder` (real audio-level waveform) → STT provider → context built from profile/routine/inventory/product (only what's needed; the profile can be withheld in Privacy settings) → Claude with structured output → spoken with the macOS system voice or ElevenLabs → conversation and actions saved. Voice input runs **on-device by default** (Whisper `base.en` via transformers.js + ONNX Runtime): free, no key, and audio never leaves the computer. The ~80 MB model downloads once into the app's data folder (`models/`) shortly after launch. Recordings are re-encoded to 16 kHz mono WAV in the renderer before transcription. Set `STT_PROVIDER=openai` or `elevenlabs` (with its key) to use a cloud service instead, `STT_LOCAL_MODEL` to pick another Whisper model, or `STT_PROVIDER=off` to type only.
 
 ## Data model & persistence
 
@@ -83,21 +83,22 @@ The local file was chosen over a database server because this is single-user and
 |---|---|
 | YouCam skin analysis | **Implemented to the v2.1 docs** (upload → task → poll, Bearer key, documented error codes, 429 backoff). **Not run against the live API**: no key was available. Without a key it shows "not configured", or a mock flagged **Mock data** in dev. |
 | Assistant (Claude, `claude-opus-5-5`) | **Implemented** with the official SDK, structured output, server-side refusal fallback, a 60 s timeout and cancellation. **Not run live** (no key). Without a key it uses a **rule-based fallback**, and every answer is labelled as such. |
-| Speech-to-text | OpenAI transcription or ElevenLabs Scribe. **Awaiting key**; typing is the fallback. |
+| Speech-to-text | **Live, on-device** (Whisper `base.en`, free, no key): verified in the dev app with a recorded clip fed through the real recorder, and in the packaged `.app`. OpenAI or ElevenLabs Scribe optional (not run live). |
 | Text-to-speech | **Live**: on-device macOS voice. ElevenLabs optional (awaiting key). |
 | Browser extension + bridge | **Live and tested** (token auth, origin check, schema validation, extractor tests). |
 | Product catalog / marketplace | **Demo data only**, labelled everywhere: key ingredients only and illustrative prices. "Visit" opens brand homepages. There are no partnerships, offers or in-app checkout. |
 
 ## Test results (this build)
 
-- `npm run typecheck`: clean · `npm run lint`: clean · `npm test`: **58/58 pass**
+- `npm run typecheck`: clean · `npm run lint`: clean · `npm test`: **66/66 pass**
 - `npm run smoke`: **20/20 checks pass**, 0 renderer errors. Covers onboarding → profile saved; routine add + reorder saved; inventory running-low → restock; mock analysis saved and flagged; bridge rejects a bad token and accepts a valid product; companion product-detected → analysis → comparison → answer (labelled) → save → appears in the main app; mark-owned; add an alternative to the evening routine; page-read failure; voice without STT.
 - `npm run package:mac`: unsigned `.app` builds and launches. Production mode turns off demo data and mocks.
 
 ## Known limitations
 
-- **Not verified live:** YouCam, Claude and the STT providers (no credentials here). Run the app with keys and check one real analysis and one voice question.
-- **Microphone capture** couldn't be exercised in automation; the voice path was tested up to the provider boundary. The OS permission prompt shows the first time you use the mic.
+- **Not verified live:** YouCam, Claude and the cloud STT providers (no credentials here). Run the app with keys and check one real analysis and one voice question.
+- **Microphone capture** was tested with Chromium's fake microphone (a recorded clip), not a live mic. The OS permission prompt shows the first time you use the mic.
+- **First voice use needs internet once** to download the speech model (~80 MB); after that it works offline. On-device Whisper is English-only by default.
 - The **compatibility score** is a transparent rule-based estimate from ingredient lists, not a clinical assessment. The ingredient reference covers about 30 common actives and flags.
 - **Demo catalog ingredient lists are partial.** Replace them with a verified catalog (`ProvenanceSchema.kind = 'partner'`) before shipping.
 - Product pages that build their content late, or hide ingredients behind a click, may need a second "Check this product" click. The extractor never bypasses logins, paywalls or CAPTCHAs.

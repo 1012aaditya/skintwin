@@ -22,7 +22,8 @@ export interface AppConfig {
   llmModel: string
   youcamKey: string | null
   youcamBase: string
-  sttProvider: 'openai' | 'elevenlabs' | null
+  sttProvider: 'openai' | 'elevenlabs' | 'local' | null
+  sttLocalModel: string
   openaiKey: string | null
   elevenLabsKey: string | null
   elevenLabsVoiceId: string | null
@@ -45,18 +46,23 @@ export function loadConfig(dirs: string[], isDev: boolean): AppConfig {
   const openaiKey = get('OPENAI_API_KEY')
   const elevenLabsKey = get('ELEVENLABS_API_KEY')
   const sttPref = get('STT_PROVIDER')
+  // On-device Whisper is the free default; a cloud provider is used only when chosen
+  // or when its key is the only one present. STT_PROVIDER=off turns voice input off.
   const sttProvider =
-    sttPref === 'openai' && openaiKey ? 'openai'
+    sttPref === 'off' || sttPref === 'none' ? null
+    : sttPref === 'local' ? 'local'
+    : sttPref === 'openai' && openaiKey ? 'openai'
     : sttPref === 'elevenlabs' && elevenLabsKey ? 'elevenlabs'
-    : openaiKey ? 'openai'
-    : elevenLabsKey ? 'elevenlabs'
-    : null
+    : !sttPref && openaiKey ? 'openai'
+    : !sttPref && elevenLabsKey ? 'elevenlabs'
+    : 'local'
   return {
     anthropicKey: get('ANTHROPIC_API_KEY'),
     llmModel: get('SKINTWIN_LLM_MODEL') ?? 'claude-opus-5-5',
     youcamKey: get('YOUCAM_API_KEY'),
     youcamBase: get('YOUCAM_API_BASE') ?? 'https://yce-api-01.makeupar.com',
     sttProvider,
+    sttLocalModel: get('STT_LOCAL_MODEL') ?? 'onnx-community/whisper-base.en',
     openaiKey,
     elevenLabsKey,
     elevenLabsVoiceId: get('ELEVENLABS_VOICE_ID'),

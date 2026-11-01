@@ -8,7 +8,7 @@ import { cn } from '@renderer/lib/cn'
 import { blobToBase64 } from '@renderer/lib/media'
 import { newRequestId, useProviders, useSnapshot } from '@renderer/lib/store'
 import { companionReducer, initialContext, isExpanded, type CompanionContext, type CompanionState } from './machine'
-import { MicError, useRecorder, useSpeaker } from './voice'
+import { MicError, toWav16k, useRecorder, useSpeaker } from './voice'
 import { ComparisonView, ErrorView, HomeView, ProcessingSteps, ProductAnalysisView, ProductDetectedView, ProfilePeekView, QuickActionsView, ResponseView } from './views'
 
 export const DEFAULT_PRODUCT_QUESTION = 'Is this product good for my skin?'
@@ -75,7 +75,12 @@ export function Companion() {
     dispatch({ type: 'STOP_LISTENING', requestId })
     const blob = await recorder.stop()
     if (!blob || blob.size < 2000) return dispatch({ type: 'FAILED', requestId, error: { kind: 'unknown', message: 'I didn’t catch that — the recording was too short. Try again, or type your question.' } })
-    const stt = await window.skintwin.speech.transcribe({ requestId, audioBase64: await blobToBase64(blob), mimeType: blob.type })
+    const wav = await toWav16k(blob).catch(() => null)
+    if (!wav) {
+      dispatch({ type: 'FAILED', requestId, error: { kind: 'provider', message: 'I couldn’t read that recording. Try again.' } })
+      return
+    }
+    const stt = await window.skintwin.speech.transcribe({ requestId, audioBase64: await blobToBase64(wav), mimeType: wav.type })
     if (!stt.ok) {
       if (stt.code !== 'cancelled') dispatch({ type: 'FAILED', requestId, error: { kind: stt.code === 'not_configured' ? 'stt_not_configured' : 'provider', message: stt.error } })
       return
@@ -90,7 +95,10 @@ export function Companion() {
     const c = ctxRef.current
     if (c.state === 'processing' || c.state === 'listening') return
     speaker.stop()
-    if (!sttReady) {
+    // A shortcut can arrive before provider status has loaded (e.g. the first press
+    // that opens the companion), so ask main directly rather than assume "off".
+    const status = providers ?? (await window.skintwin.providers.status())
+    if (!status.stt.configured || voice?.textOnly) {
       // No speech-to-text yet: open the keyboard and say why, instead of failing.
       setVoiceNotice(!voice?.textOnly)
       setTyping(true)
@@ -103,7 +111,7 @@ export function Companion() {
       const e = err as MicError
       dispatch({ type: 'PERMISSION_REQUIRED', error: { kind: e.kind === 'denied' ? 'microphone_denied' : 'microphone_unavailable', message: e.message } })
     }
-  }, [recorder, speaker, sttReady, voice?.textOnly])
+  }, [recorder, speaker, providers, voice?.textOnly])
 
   const cancel = useCallback(() => {
     const c = ctxRef.current
@@ -315,7 +323,7 @@ export function Companion() {
                     {voiceNotice && (
                       <p className="mb-2 flex items-center gap-2 px-1 text-[12.5px] text-lilac-200">
                         <Mic className="h-3.5 w-3.5 shrink-0" />
-                        Voice needs a speech-to-text key — type for now.
+                        Voice input is off — type for now.
                         <button className="ml-auto underline underline-offset-2 hover:text-ink" onClick={() => window.skintwin.app.open('/settings')}>
                           Set up
                         </button>

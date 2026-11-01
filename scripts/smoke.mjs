@@ -21,7 +21,7 @@ const check = (cond, msg) => (cond ? log('PASS', msg) : (failures.push(msg), con
 const app = await electron.launch({
   executablePath: bin,
   args: [ROOT],
-  env: { ...process.env, SKINTWIN_USER_DATA: userData, SKINTWIN_DEMO_CATALOG: '1', SKINTWIN_ENABLE_MOCKS: '1', SKINTWIN_BRIDGE_PORT: String(PORT), ANTHROPIC_API_KEY: '', OPENAI_API_KEY: '', ELEVENLABS_API_KEY: '', YOUCAM_API_KEY: '' },
+  env: { ...process.env, SKINTWIN_USER_DATA: userData, SKINTWIN_DEMO_CATALOG: '1', SKINTWIN_ENABLE_MOCKS: '1', SKINTWIN_BRIDGE_PORT: String(PORT), ANTHROPIC_API_KEY: '', OPENAI_API_KEY: '', ELEVENLABS_API_KEY: '', YOUCAM_API_KEY: '', STT_PROVIDER: 'off' },
   timeout: 30_000
 })
 const errors = []
@@ -260,10 +260,10 @@ await fetch(`http://127.0.0.1:${PORT}/v1/events`, { method: 'POST', headers: { '
 await companion.waitForSelector('text=Couldn’t read this page', { timeout: 10_000 })
 await shot(companion, '26-companion-page-error')
 await clickText(companion, 'Not now')
-// voice without an STT provider → opens the keyboard and explains why
+// voice input turned off (STT_PROVIDER=off) → opens the keyboard and explains why
 await main.evaluate(() => window.skintwin.companion.show({ type: 'listen' }))
 await sleep(600)
-check(await companion.evaluate(() => document.body.innerText.includes('Voice needs a speech-to-text key')), 'voice without STT explains and falls back to typing')
+check(await companion.evaluate(() => document.body.innerText.includes('Voice input is off')), 'voice without STT explains and falls back to typing')
 await shot(companion, '27-companion-voice-unconfigured')
 
 await go('/discover')

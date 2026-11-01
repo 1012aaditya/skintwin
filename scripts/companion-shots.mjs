@@ -15,7 +15,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const app = await electron.launch({
   executablePath: join(ROOT, 'node_modules/electron/dist/Electron.app/Contents/MacOS/Electron'),
   args: [ROOT],
-  env: { ...process.env, SKINTWIN_USER_DATA: userData, SKINTWIN_DEMO_CATALOG: '1', SKINTWIN_ENABLE_MOCKS: '1', SKINTWIN_BRIDGE_PORT: String(PORT), ANTHROPIC_API_KEY: '', OPENAI_API_KEY: '', ELEVENLABS_API_KEY: '' }
+  env: { ...process.env, SKINTWIN_USER_DATA: userData, SKINTWIN_DEMO_CATALOG: '1', SKINTWIN_ENABLE_MOCKS: '1', SKINTWIN_BRIDGE_PORT: String(PORT), ANTHROPIC_API_KEY: '', OPENAI_API_KEY: '', ELEVENLABS_API_KEY: '', STT_PROVIDER: 'off' }
 })
 const main = await app.firstWindow()
 await main.waitForLoadState('domcontentloaded')

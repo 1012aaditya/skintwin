@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { encodeWav } from '@shared/wav'
 
 export class MicError extends Error {
   constructor(
@@ -99,6 +100,28 @@ export function useRecorder(onAutoStop: () => void) {
   }, [teardown])
 
   return { recording, level, start, stop, cancel }
+}
+
+/**
+ * Re-encodes a recording as 16 kHz mono WAV: what on-device Whisper needs, and a
+ * format the cloud providers accept too. Downmixing and resampling happen in Web Audio.
+ */
+export async function toWav16k(blob: Blob): Promise<Blob> {
+  const ctx = new AudioContext()
+  let decoded: AudioBuffer
+  try {
+    decoded = await ctx.decodeAudioData(await blob.arrayBuffer())
+  } finally {
+    void ctx.close().catch(() => undefined)
+  }
+  const rate = 16_000
+  const offline = new OfflineAudioContext(1, Math.max(1, Math.ceil(decoded.duration * rate)), rate)
+  const src = offline.createBufferSource()
+  src.buffer = decoded
+  src.connect(offline.destination)
+  src.start()
+  const rendered = await offline.startRendering()
+  return new Blob([encodeWav(rendered.getChannelData(0), rate)], { type: 'audio/wav' })
 }
 
 /** Speaks answers via ElevenLabs (if configured) or the on-device system voice. */

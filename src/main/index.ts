@@ -14,7 +14,7 @@ import { createEmptyDatabase, Store } from './db'
 import { startBridge } from './services/bridge'
 import { productFromExtraction } from './services/ingest'
 import { AnthropicAssistant, AssistantError, buildContext, RuleBasedAssistant, type AssistantProvider } from './services/llm'
-import { ElevenLabsSpeaker, ElevenLabsTranscriber, OpenAITranscriber, type SpeechToText, type TextToSpeech } from './services/speech'
+import { ElevenLabsSpeaker, ElevenLabsTranscriber, LocalWhisperTranscriber, OpenAITranscriber, type SpeechToText, type TextToSpeech } from './services/speech'
 import { MockSkinAnalysis, YouCamError, YouCamProvider, type SkinAnalysisProvider } from './services/youcam'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -25,10 +25,11 @@ const config = loadConfig([process.cwd(), app.getPath('userData')], isDev)
 const store = new Store(join(app.getPath('userData'), 'skintwin-db.json'), { demoCatalog: config.demoCatalog })
 
 const assistant: AssistantProvider = config.anthropicKey ? new AnthropicAssistant(config.anthropicKey, config.llmModel) : new RuleBasedAssistant()
+const localStt = config.sttProvider === 'local' ? new LocalWhisperTranscriber(join(app.getPath('userData'), 'models'), config.sttLocalModel) : null
 const stt: SpeechToText | null =
   config.sttProvider === 'openai' ? new OpenAITranscriber(config.openaiKey!)
   : config.sttProvider === 'elevenlabs' ? new ElevenLabsTranscriber(config.elevenLabsKey!)
-  : null
+  : localStt
 const tts: TextToSpeech | null = config.ttsProvider === 'elevenlabs' ? new ElevenLabsSpeaker(config.elevenLabsKey!, config.elevenLabsVoiceId!) : null
 const analysisProvider: SkinAnalysisProvider | null = config.youcamKey
   ? new YouCamProvider(config.youcamKey, config.youcamBase)
@@ -330,9 +331,10 @@ function registerIpc() {
   })
 
   ipcMain.handle('stt:transcribe', async (_e, req: { requestId: string; audioBase64: string; mimeType: string }): Promise<Result<{ text: string }>> => {
-    if (!stt) return fail('Voice input isn’t configured. Add OPENAI_API_KEY or ELEVENLABS_API_KEY, or type your question.', 'not_configured')
+    if (!stt) return fail('Voice input is turned off (STT_PROVIDER=off in .env). Type your question instead.', 'not_configured')
     const ctrl = new AbortController()
-    const timer = setTimeout(() => ctrl.abort(), 30_000)
+    // The first on-device request may include the one-time model download.
+    const timer = setTimeout(() => ctrl.abort(), stt === localStt ? 300_000 : 30_000)
     inflight.set(req.requestId, ctrl)
     try {
       const audio = Buffer.from(req.audioBase64, 'base64')
@@ -557,6 +559,9 @@ else {
 
     registerShortcuts()
     setAppMenu()
+    // Load (and on first run download) the speech model in the background, so the
+    // first spoken question doesn't wait for it.
+    setTimeout(() => void localStt?.warmUp().catch((err) => console.warn('[stt] on-device model unavailable:', (err as Error).message)), 2000)
     let lastKeys = shortcutKeys()
     store.subscribe(() => {
       const keys = shortcutKeys()
