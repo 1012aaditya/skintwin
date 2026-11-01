@@ -159,10 +159,12 @@ function createCompanionWindow(): BrowserWindow {
     alwaysOnTop: store.get().settings.companion.alwaysOnTop,
     show: false,
     title: 'SkinTwin Companion',
+    // A macOS panel (like Spotlight) can float over other apps' full-screen spaces; a normal window can't.
+    ...(process.platform === 'darwin' ? { type: 'panel' } : {}),
     backgroundColor: '#00000000',
     webPreferences: webPreferences()
   })
-  if (process.platform === 'darwin') companionWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  if (process.platform === 'darwin') companionWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true })
   companionWindow.setAlwaysOnTop(store.get().settings.companion.alwaysOnTop, 'floating')
   hardenWindow(companionWindow)
   companionWindow.on('close', (e) => {
