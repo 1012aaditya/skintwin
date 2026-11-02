@@ -68,10 +68,12 @@ export const LIMITS = {
   maxEyesClosed: 0.45,
   maxMouthOpen: 0.2,
   maxSmile: 0.4,
-  minMean: 0.32,
+  // YouCam rejected photos at the old 0.32 / 6% limits with error_lighting_dark, so aim
+  // brighter. Manual capture and "Analyze anyway" still work if this is too strict.
+  minMean: 0.4,
   maxMean: 0.8,
   maxClipped: 0.03,
-  maxDark: 0.06,
+  maxDark: 0.03,
   minBalance: 0.8,
   maxMotion: 0.006
 } as const

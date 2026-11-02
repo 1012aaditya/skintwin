@@ -1,6 +1,7 @@
 import { AlertTriangle, BarChart3, Camera, Check, Clock, Crop, Droplets, Grid3x3, ImageUp, Info, RefreshCcw, ScanFace, Sparkles, Sun, Waves, X } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { scanScore } from '@shared/skin'
 import { label, SKIN_TYPES, type AnalysisMask, type AnalysisMetric, type Concern, type SkinAnalysis, type SkinType } from '@shared/models'
 import { Badge, Button, Card, ErrorState, ProgressRing, SectionTitle, Spinner } from '@renderer/components/ui'
 import { cn } from '@renderer/lib/cn'
@@ -52,12 +53,7 @@ const STAGE_TEXT: Record<string, string> = {
   finalizing: 'Reading your results…'
 }
 
-export function summaryScore(a: SkinAnalysis): { value: number | null; label: string } {
-  if (a.overallScore != null) return { value: a.overallScore, label: 'Overall score' }
-  const scores = a.metrics.map((m) => m.score).filter((s): s is number => s != null)
-  if (!scores.length) return { value: null, label: 'No score' }
-  return { value: Math.round(scores.reduce((x, y) => x + y, 0) / scores.length), label: `Average of ${scores.length} scores` }
-}
+export const summaryScore = scanScore
 
 export function Analyze() {
   const db = useDb()
@@ -67,6 +63,10 @@ export function Analyze() {
   const [shown, setShown] = useState<SkinAnalysis | null>(latest)
   // The analysed photo and YouCam's masks, kept in memory for this screen only.
   const [fresh, setFresh] = useState<{ id: string; photo: string; masks: AnalysisMask[] } | null>(null)
+  // A failed attempt stays visible above the old result until a new analysis succeeds,
+  // so the previous card is never mistaken for the new one.
+  const [failed, setFailed] = useState<{ at: string; message: string } | null>(null)
+  const [justRan, setJustRan] = useState<string | null>(null)
   useEffect(() => () => void (fresh && URL.revokeObjectURL(fresh.photo)), [fresh])
   const videoRef = useRef<HTMLVideoElement>(null)
   const overlayRef = useRef<HTMLCanvasElement>(null)
@@ -166,12 +166,17 @@ export function Analyze() {
     if (res.ok) {
       const { analysis, masks } = res.data
       setShown(analysis)
+      setFailed(null)
+      setJustRan(analysis.id)
       setPhase({ kind: 'idle' })
       if (masks.length) setFresh({ id: analysis.id, photo: url, masks })
       else URL.revokeObjectURL(url)
       toast.success(analysis.isMock ? 'Mock analysis complete (not a real result)' : 'Analysis complete')
     } else if (res.code === 'cancelled') setPhase({ kind: 'idle' })
-    else setPhase({ kind: 'error', url, message: res.error, code: res.code })
+    else {
+      setPhase({ kind: 'error', url, message: res.error, code: res.code })
+      setFailed({ at: new Date().toISOString(), message: res.error })
+    }
   }
 
   const photoUrl = phase.kind === 'preview' || phase.kind === 'submitting' ? phase.url : phase.kind === 'error' ? phase.url : null
@@ -327,7 +332,21 @@ export function Analyze() {
         <p className="text-center text-xs text-ink-faint">Your photo is sent to YouCam only when you press Analyze, and is never saved by SkinTwin. Face checks run on this computer.</p>
       </div>
 
-      {shown ? <AnalysisResult analysis={shown} heatmap={fresh?.id === shown.id ? fresh : null} /> : <NoResultYet />}
+      <div className="flex flex-col gap-4">
+        {failed && (
+          <div className="flex items-start gap-3 rounded-[20px] border border-rose-300/40 bg-rose-400/10 p-4 text-[13.5px]" role="alert" data-testid="analysis-failed">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-300" />
+            <p className="flex-1">
+              <span className="font-semibold">Your latest attempt ({formatDate(failed.at, { timeStyle: 'short' } as Intl.DateTimeFormatOptions)}) didn’t complete:</span> {failed.message}
+              {shown && <span className="text-ink-soft"> The result below is your previous analysis from {formatDate(shown.createdAt)}.</span>}
+            </p>
+            <button aria-label="Dismiss" onClick={() => setFailed(null)} className="text-ink-soft hover:text-ink">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+        {shown ? <AnalysisResult analysis={shown} heatmap={fresh?.id === shown.id ? fresh : null} heading={`${justRan === shown.id ? 'New analysis' : 'Last analysis'} · ${formatDate(shown.createdAt)}`} /> : <NoResultYet />}
+      </div>
     </div>
   )
 }
@@ -375,7 +394,7 @@ export function MetricTile({ m }: { m: AnalysisMetric }) {
   )
 }
 
-export function AnalysisResult({ analysis, heatmap }: { analysis: SkinAnalysis; heatmap?: { photo: string; masks: AnalysisMask[] } | null }) {
+export function AnalysisResult({ analysis, heatmap, heading = 'Your skin analysis' }: { analysis: SkinAnalysis; heatmap?: { photo: string; masks: AnalysisMask[] } | null; heading?: string }) {
   const db = useDb()
   const summary = summaryScore(analysis)
   const scored = analysis.metrics.filter((m) => m.score != null).sort((a, b) => b.score! - a.score!)
@@ -392,7 +411,7 @@ export function AnalysisResult({ analysis, heatmap }: { analysis: SkinAnalysis; 
           <Sparkles className="h-5 w-5" />
         </span>
         <div className="flex-1">
-          <h2 className="text-[26px] font-semibold">Your skin analysis</h2>
+          <h2 className="text-[26px] font-semibold" data-testid="analysis-heading">{heading}</h2>
           <p className="text-sm text-ink-soft">
             {analysis.isMock ? 'Development mock' : <>Powered by <span className="font-semibold text-blush-300">YouCam</span></>}
           </p>

@@ -5,7 +5,7 @@ import wasmLoaderPath from '@mediapipe/tasks-vision/vision_wasm_internal.js?url'
 import wasmBinaryPath from '@mediapipe/tasks-vision/vision_wasm_internal.wasm?url'
 import modelPath from '@renderer/assets/face_landmarker.task?url'
 import { coverCrop } from '@renderer/lib/media'
-import { allOk, boxInCrop, evaluateFace, faceCrop, measureLight, poseFromMatrix, sharpness, type Check, type FaceMeasure, type LightMeasure, type Rect } from './facecheck'
+import { allOk, boxInCrop, LIMITS, evaluateFace, faceCrop, measureLight, poseFromMatrix, sharpness, type Check, type FaceMeasure, type LightMeasure, type Rect } from './facecheck'
 
 export const CAPTURE_ASPECT = 4 / 5
 /** YouCam needs ≥480px on the short side; leave headroom. */
@@ -96,7 +96,7 @@ function drawOverlay(canvas: HTMLCanvasElement, box: Rect | null, light: LightMe
       const l = light.grid[gy]![gx]!
       if (Number.isNaN(l)) continue
       ctx.fillStyle =
-        l < 0.3 ? `rgb(70 140 255 / ${Math.min(0.55, (0.3 - l) * 2.5 + 0.2)})`
+        l < LIMITS.minMean ? `rgb(70 140 255 / ${Math.min(0.55, (LIMITS.minMean - l) * 2.5 + 0.2)})`
         : l > 0.82 ? `rgb(255 140 70 / ${Math.min(0.55, (l - 0.82) * 3 + 0.2)})`
         : `rgb(120 240 190 / ${ready ? 0.16 : 0.08})`
       ctx.fillRect(bx + (gx / cols) * bw - 2, by + (gy / rows) * bh - 2, bw / cols + 4, bh / rows + 4)

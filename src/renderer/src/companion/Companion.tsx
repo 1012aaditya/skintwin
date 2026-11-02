@@ -7,6 +7,8 @@ import { prettyAccelerator } from '@shared/shortcuts'
 import { cn } from '@renderer/lib/cn'
 import { blobToBase64 } from '@renderer/lib/media'
 import { newRequestId, useProviders, useSnapshot } from '@renderer/lib/store'
+import { scanSummary } from '@shared/skin'
+import { SCAN_STAGE, SkinCameraView, SkinResultView, type SkinScan } from './SkinScan'
 import { IslandBar, NO_NOTCH, panelClip, pillClip, topRow, type IslandInfo } from './Island'
 import { companionReducer, initialContext, isExpanded, type CompanionContext, type CompanionState } from './machine'
 import { MicError, toWav16k, useRecorder, useSpeaker } from './voice'
@@ -147,18 +149,66 @@ export function Companion() {
     dispatch({ type: 'RESET' })
   }, [])
 
+  // ----- skin scan from the island -----
+  const [scan, setScanState] = useState<SkinScan>({ kind: 'idle' })
+  const scanRef = useRef(scan)
+  const setScan = useCallback((next: SkinScan) => {
+    // the photo lives only in memory: free it as soon as it's no longer shown
+    const prev = scanRef.current
+    if ('url' in prev && !('url' in next && next.url === prev.url)) URL.revokeObjectURL(prev.url)
+    scanRef.current = next
+    setScanState(next)
+  }, [])
+  const [scanDetails, setScanDetails] = useState(false)
+  const scanPanel = scan.kind === 'camera' || scan.kind === 'preview' || scan.kind === 'error' || (scan.kind === 'done' && scanDetails)
+  useEffect(
+    () =>
+      window.skintwin.analysis.onProgress(({ requestId, stage }) => {
+        const s = scanRef.current
+        if (s.kind === 'running' && s.requestId === requestId) setScan({ ...s, stage })
+      }),
+    [setScan]
+  )
+  const analyzeScan = useCallback(async () => {
+    const s = scanRef.current
+    if (s.kind !== 'preview') return
+    const requestId = newRequestId()
+    setScan({ kind: 'running', requestId, stage: 'starting', url: s.url })
+    const res = await window.skintwin.analysis.run({ requestId, imageBase64: await blobToBase64(s.blob), mimeType: s.blob.type || 'image/jpeg' })
+    const now = scanRef.current
+    if (now.kind !== 'running' || now.requestId !== requestId) return // cancelled meanwhile
+    if (res.ok) {
+      setScanDetails(false)
+      setScan({ kind: 'done', analysis: res.data.analysis, masks: res.data.masks, url: now.url })
+      const analyses = (await window.skintwin.db.get()).analyses
+      void speaker.speak(scanSummary(res.data.analysis, analyses).line)
+    } else if (res.code === 'cancelled') setScan({ kind: 'idle' })
+    else setScan({ kind: 'error', message: res.error })
+  }, [setScan, speaker])
+  const cancelScan = useCallback(() => {
+    const s = scanRef.current
+    if (s.kind === 'running') void window.skintwin.cancel(s.requestId)
+    setScanDetails(false)
+    setScan({ kind: 'idle' })
+  }, [setScan])
+  const showScanDetails = useCallback(() => setScanDetails(true), [])
+  const dismissScan = useCallback(() => {
+    stopSpeaking.current()
+    cancelScan()
+  }, [cancelScan])
+
   // Once the panel is open it stays open while listening/thinking, so the window doesn't jump.
   const [panel, setPanel] = useState(false)
   useEffect(() => {
     if ((isExpanded(ctx.state) && !compactAnswer) || typing) setPanel(true)
     else if (ctx.state === 'idle') setPanel(false)
   }, [ctx.state, typing, compactAnswer])
-  const expanded = (isExpanded(ctx.state) && !compactAnswer) || typing || (panel && (ctx.state === 'listening' || ctx.state === 'processing'))
+  const expanded = (isExpanded(ctx.state) && !compactAnswer) || typing || (panel && (ctx.state === 'listening' || ctx.state === 'processing')) || scanPanel
 
   // Window size follows state. The window is transparent, so it resizes instantly and the
   // content does the animating: growing → enlarge the window first, then bloom the panel out
   // of the orb; shrinking → collapse the panel into the orb first, then shrink the window.
-  const target: WindowMode = expanded ? 'expanded' : ctx.state === 'idle' ? 'orb' : 'compact'
+  const target: WindowMode = expanded ? 'expanded' : ctx.state === 'idle' && scan.kind === 'idle' ? 'orb' : 'compact'
   const [shown, setShown] = useState<WindowMode>('orb')
   const targetRef = useRef(target)
   targetRef.current = target
@@ -230,20 +280,29 @@ export function Companion() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (ctxRef.current.state === 'listening' || ctxRef.current.state === 'processing') cancel()
+        const s = scanRef.current
+        if (s.kind === 'camera' || s.kind === 'preview' || s.kind === 'error') cancelScan()
+        else if (s.kind === 'done') setScanDetails(false)
+        else if (ctxRef.current.state === 'listening' || ctxRef.current.state === 'processing') cancel()
         else if (typing) setTyping(false)
         else dispatch({ type: 'BACK' })
       } else if (e.key === 'Enter' && e.metaKey && ctxRef.current.state === 'listening') void finishListening()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [cancel, finishListening, typing])
+  }, [cancel, cancelScan, finishListening, typing])
 
   if (!snap) return <div className="grid h-full place-items-center"><Spinner /></div>
 
   const mood: OrbMood = ctx.state === 'listening' ? 'listening' : ctx.state === 'processing' ? 'thinking' : speaker.speaking ? 'speaking' : ctx.state === 'error' || ctx.state === 'permission_required' ? 'concerned' : 'idle'
   const { alwaysOnTop: pinned, corner, shortcut, voiceShortcut } = snap.settings.companion
   const collapse = () => {
+    if (scanPanel) {
+      // back to the pill: a finished scan keeps its one-line result there
+      if (scan.kind === 'done') setScanDetails(false)
+      else cancelScan()
+      return
+    }
     if (ctx.state === 'listening' || ctx.state === 'processing') cancel()
     setTyping(false)
     setVoiceNotice(false)
@@ -278,6 +337,15 @@ export function Companion() {
                 onTalk={() => void listen()}
                 onType={() => setTyping(true)}
                 onCircle={() => void window.skintwin.circle.start()}
+                onSkin={() => {
+                  stopSpeaking.current()
+                  setScanDetails(false)
+                  setScan({ kind: 'camera' })
+                }}
+                skin={scan.kind === 'running' ? { kind: 'progress', ...(SCAN_STAGE[scan.stage] ?? SCAN_STAGE.analyzing!) } : scan.kind === 'done' ? { kind: 'result', line: scanSummary(scan.analysis, snap.analyses).line, mock: scan.analysis.isMock } : null}
+                onSkinCancel={cancelScan}
+                onSkinDetails={showScanDetails}
+                onSkinDismiss={dismissScan}
                 onSend={() => void finishListening()}
                 onCancel={cancel}
                 onMenu={() => void window.skintwin.companion.menu({ hasProduct: !!ctx.productId })}
@@ -342,13 +410,21 @@ export function Companion() {
               <motion.div className="flex min-h-0 flex-1 flex-col" initial={{ opacity: 0, y: bottom ? 10 : -10 }} animate={{ opacity: 1, y: 0, transition: { duration: 0.3, delay: 0.16, ease: EASE } }} exit={{ opacity: 0, transition: { duration: 0.12 } }}>
               <PanelHeader
                 ctx={ctx}
+                title={scanPanel ? (scan.kind === 'done' ? 'Skin scan results' : 'Skin scan') : undefined}
                 typing={typing}
                 pinned={pinned}
                 island={island}
-                onBack={SUBVIEWS.includes(ctx.state) ? () => dispatch({ type: 'BACK' }) : undefined}
+                onBack={scanPanel ? undefined : SUBVIEWS.includes(ctx.state) ? () => dispatch({ type: 'BACK' }) : undefined}
                 onCollapse={collapse}
               />
               <div className="no-drag scroll-area min-h-0 flex-1 px-5 pt-1 pb-4">
+                {scanPanel ? (
+                  scan.kind === 'done' ? (
+                    <SkinResultView analysis={scan.analysis} masks={scan.masks} photo={scan.url} />
+                  ) : (
+                    <SkinCameraView scan={scan} onCaptured={(blob) => setScan({ kind: 'preview', blob, url: URL.createObjectURL(blob) })} onAnalyze={() => void analyzeScan()} onRetake={() => setScan({ kind: 'camera' })} onClose={cancelScan} />
+                  )
+                ) : (
                 <AnimatePresence mode="wait" initial={false}>
                   <motion.div key={isExpanded(ctx.state) || ctx.state === 'listening' || ctx.state === 'processing' ? ctx.state : 'home'} initial={{ opacity: 0, x: 14 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.2, ease: EASE }}>
                     {ctx.state === 'responding' && ctx.response && <ResponseView ctx={ctx} speaker={speaker} onReplay={() => speaker.speak(ctx.response!.reply.answer)} send={dispatch} />}
@@ -381,7 +457,9 @@ export function Companion() {
                     {!isExpanded(ctx.state) && ctx.state !== 'listening' && ctx.state !== 'processing' && <HomeView hasProduct={!!ctx.productId} onPick={submitText} />}
                   </motion.div>
                 </AnimatePresence>
+                )}
               </div>
+              {!scanPanel && (
               <div className="no-drag border-t border-white/10 px-4 pt-3 pb-4">
                 {typing ? (
                   <>
@@ -427,6 +505,7 @@ export function Companion() {
                   </div>
                 )}
               </div>
+              )}
               </motion.div>
             </motion.div>
           )}
@@ -561,8 +640,8 @@ function IconButton({ label, onClick, children }: { label: string; onClick: () =
   )
 }
 
-function PanelHeader({ ctx, typing, pinned, island, onBack, onCollapse }: { ctx: CompanionContext; typing: boolean; pinned: boolean; island: boolean; onBack?: () => void; onCollapse: () => void }) {
-  const subtitle = SUBTITLE[ctx.state] ?? (typing && !isExpanded(ctx.state) ? 'Ask me anything about your skin' : null)
+function PanelHeader({ ctx, title, typing, pinned, island, onBack, onCollapse }: { ctx: CompanionContext; title?: string; typing: boolean; pinned: boolean; island: boolean; onBack?: () => void; onCollapse: () => void }) {
+  const subtitle = title ?? SUBTITLE[ctx.state] ?? (typing && !isExpanded(ctx.state) ? 'Ask me anything about your skin' : null)
   return (
     <div className={cn('flex items-center gap-2.5 px-4 pb-3', island ? 'pt-3' : 'drag pt-4')}>
       {onBack ? (

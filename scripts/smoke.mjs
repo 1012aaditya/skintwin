@@ -27,8 +27,10 @@ const app = await electron.launch({
 const errors = []
 const watch = (page, name) => {
   page.on('pageerror', (e) => errors.push(`[${name}] ${e.message}`))
-  // MediaPipe's TensorFlow Lite runtime prints routine "INFO:" start-up lines through console.error.
-  page.on('console', (m) => m.type() === 'error' && !/^INFO: /.test(m.text()) && errors.push(`[${name}] console: ${m.text()}`))
+  // MediaPipe's TensorFlow Lite runtime prints routine "INFO:" start-up lines through console.error,
+  // and tries to send usage logs to Google, which our CSP blocks on purpose.
+  const expected = (t) => /^INFO: /.test(t) || /odml\.pa\.googleapis\.com/.test(t)
+  page.on('console', (m) => m.type() === 'error' && !expected(m.text()) && errors.push(`[${name}] console: ${m.text()}`))
 }
 
 const main = await app.firstWindow()
@@ -180,6 +182,7 @@ await main.waitForSelector('text=Mock data — not a real result', { timeout: 15
 })
 await shot(main, '17-analyze-result')
 check(db().analyses.length === 1 && db().analyses[0].isMock === true, 'mock analysis saved and flagged as mock')
+check(/^New analysis · /.test(await main.textContent('[data-testid="analysis-heading"]')), 'Analyze labels the shown result with its date')
 
 // ---------- Companion ----------
 await main.evaluate(() => window.skintwin.companion.show())
@@ -206,7 +209,19 @@ await companion.hover('[aria-label="Open SkinTwin"]')
 await companion.waitForSelector('button:has-text("Circle")')
 await sleep(500)
 await shot(companion, '20-island-hover')
-check(true, 'hovering the island shows Talk / Ask / Circle')
+check(!!(await companion.waitForSelector('button:has-text("Skin")').catch(() => null)), 'hovering the island shows Talk / Ask / Circle / Skin')
+// Skin scan: the camera panel drops down. (macOS blocks camera automation, so capture is tested live.)
+await companion.click('button:has-text("Skin")')
+await companion.waitForSelector('[data-testid="skin-scan"]')
+await sleep(700)
+ib = await islandBounds()
+check(ib.b.height > 400, 'Skin drops down the scan panel with the face guide')
+await shot(companion, '20-island-skin')
+await companion.click('[aria-label="Back to island"]')
+await companion.waitForSelector('[aria-label="Open SkinTwin"]')
+check(!(await companion.$('[data-testid="skin-scan"]')), 'closing the scan panel returns to the island')
+await companion.hover('[aria-label="Open SkinTwin"]')
+await companion.waitForSelector('button:has-text("Circle")')
 await companion.click('[aria-label="Open SkinTwin"]')
 await companion.waitForSelector('text=Ask me anything about your skin')
 await sleep(700)

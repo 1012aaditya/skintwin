@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronDown, CircleAlert, Keyboard, Loader2, MessageCircle, Mic, ScanSearch, ShieldAlert, Square, X } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronDown, CircleAlert, Keyboard, Loader2, MessageCircle, Mic, ScanFace, ScanSearch, ShieldAlert, Square, X } from 'lucide-react'
 import type { AssistantReply } from '@shared/assistant'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
@@ -34,6 +34,9 @@ export interface IslandResult {
   productId: string | null
 }
 
+/** A skin scan in the pill: YouCam's progress, then the one-line result. */
+export type IslandSkin = { kind: 'progress'; title: string; progress: number } | { kind: 'result'; line: string; mock: boolean }
+
 /** Height of the row level with the notch (or the pill's own height without one). */
 export const topRow = (info: IslandInfo) => (info.notch ? info.barHeight : 34)
 /** Gap above a floating pill on Macs without a notch. */
@@ -42,7 +45,7 @@ export const topGap = (info: IslandInfo) => (info.notch ? 0 : 6)
 export function islandSize(info: IslandInfo, shape: Shape) {
   const top = topRow(info)
   if (shape === 'idle') return { width: info.notch ? info.notchWidth + 104 : 200, height: top }
-  if (shape === 'hover') return { width: 360, height: top + 54 }
+  if (shape === 'hover') return { width: 420, height: top + 54 }
   if (shape === 'listening') return { width: 380, height: top + 58 }
   if (shape === 'result') return { width: 420, height: top + 78 }
   if (shape === 'react') return { width: 420, height: top + 118 }
@@ -73,6 +76,11 @@ export function IslandBar({
   onTalk,
   onType,
   onCircle,
+  onSkin,
+  skin,
+  onSkinCancel,
+  onSkinDetails,
+  onSkinDismiss,
   onSend,
   onCancel,
   onMenu,
@@ -89,6 +97,11 @@ export function IslandBar({
   onTalk: () => void
   onType: () => void
   onCircle: () => void
+  onSkin: () => void
+  skin: IslandSkin | null
+  onSkinCancel: () => void
+  onSkinDetails: () => void
+  onSkinDismiss: () => void
   onSend: () => void
   onCancel: () => void
   onMenu: () => void
@@ -103,12 +116,22 @@ export function IslandBar({
   const leaveTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   useEffect(() => () => clearTimeout(leaveTimer.current), [])
   // A result tucks itself away after a while, unless the pointer is resting on it.
+  const skinResult = skin?.kind === 'result' ? skin : null
   useEffect(() => {
-    if (!result || hover) return
-    const t = setTimeout(onDismiss, RESULT_TIMEOUT_MS)
+    if (!(result || skinResult) || hover || reacting) return
+    const t = setTimeout(skinResult && !result ? onSkinDismiss : onDismiss, RESULT_TIMEOUT_MS)
     return () => clearTimeout(t)
-  }, [result, hover, onDismiss])
-  const shape: Shape = ctx.state === 'listening' ? 'listening' : ctx.state === 'processing' ? 'processing' : result ? (reacting && result.productId ? 'react' : 'result') : hover ? 'hover' : 'idle'
+  }, [result, skinResult, hover, reacting, onDismiss, onSkinDismiss])
+  const skinBusy = skin?.kind === 'progress' ? skin : null
+  const shape: Shape =
+    ctx.state === 'listening' ? 'listening'
+    : ctx.state === 'processing' || skinBusy ? 'processing'
+    : result ? (reacting && result.productId ? 'react' : 'result')
+    : skinResult ? 'result'
+    : hover ? 'hover'
+    : 'idle'
+  // A scan in progress shows in the pill unless the assistant is busy with something else.
+  const showSkinProgress = !!skinBusy && ctx.state !== 'processing'
   const { width, height } = islandSize(info, shape)
   const top = topRow(info)
 
@@ -135,7 +158,7 @@ export function IslandBar({
       }}
     >
       {/* Level with the notch: only the two "ears" carry content; the middle stays empty. */}
-      <button aria-label="Open SkinTwin" onClick={result ? onDetails : onOpen} className="absolute inset-x-0 top-0 flex items-center justify-between px-3.5 outline-none" style={{ height: top }}>
+      <button aria-label="Open SkinTwin" onClick={result ? onDetails : skinResult ? onSkinDetails : onOpen} className="absolute inset-x-0 top-0 flex items-center justify-between px-3.5 outline-none" style={{ height: top }}>
         <Orb size={18} mood={mood} level={level} />
         <Ear ctx={ctx} result={result} />
       </button>
@@ -153,6 +176,9 @@ export function IslandBar({
                 </Action>
                 <Action onClick={onCircle} label="Circle" accent>
                   <ScanSearch />
+                </Action>
+                <Action onClick={onSkin} label="Skin">
+                  <ScanFace />
                 </Action>
               </>
             )}
@@ -172,18 +198,19 @@ export function IslandBar({
                 </Round>
               </>
             )}
+            {shape === 'result' && !result && skinResult && <SkinResultRow skin={skinResult} onDetails={onSkinDetails} onDismiss={onSkinDismiss} />}
             {shape === 'result' && result && <ResultRow result={result} onDetails={onDetails} onDismiss={onDismiss} onReact={result.productId ? () => setReacting(true) : undefined} />}
             {shape === 'react' && result?.productId && <ReactRow productId={result.productId} onBack={() => setReacting(false)} />}
             {shape === 'processing' && (
               <div className="flex min-w-0 flex-1 flex-col gap-2">
                 <div className="flex items-center gap-2.5">
-                  <p className="min-w-0 flex-1 truncate text-[14px] font-medium">{stageTitle}</p>
-                  <Round label="Cancel" onClick={onCancel}>
+                  <p className="min-w-0 flex-1 truncate text-[14px] font-medium">{showSkinProgress ? skinBusy!.title : stageTitle}</p>
+                  <Round label="Cancel" onClick={showSkinProgress ? onSkinCancel : onCancel}>
                     <X />
                   </Round>
                 </div>
                 <div className="h-1 overflow-hidden rounded-full bg-white/12">
-                  <motion.div className="h-full rounded-full bg-lilac-300" initial={false} animate={{ width: `${(STAGE_PROGRESS[ctx.stage ?? 'thinking'] ?? 0.5) * 100}%` }} transition={{ duration: 0.6, ease: [0.25, 1, 0.5, 1] }} />
+                  <motion.div className="h-full rounded-full bg-lilac-300" initial={false} animate={{ width: `${(showSkinProgress ? skinBusy!.progress : (STAGE_PROGRESS[ctx.stage ?? 'thinking'] ?? 0.5)) * 100}%` }} transition={{ duration: 0.6, ease: [0.25, 1, 0.5, 1] }} />
                 </div>
               </div>
             )}
@@ -212,6 +239,24 @@ function ResultRow({ result, onDetails, onDismiss, onReact }: { result: IslandRe
           <ShieldAlert />
         </Round>
       )}
+      <Round label="Dismiss" onClick={onDismiss}>
+        <X />
+      </Round>
+    </>
+  )
+}
+
+function SkinResultRow({ skin, onDetails, onDismiss }: { skin: Extract<IslandSkin, { kind: 'result' }>; onDetails: () => void; onDismiss: () => void }) {
+  return (
+    <>
+      <ScanFace className={cn('h-5 w-5 shrink-0', skin.mock ? 'text-amber-200' : 'text-lilac-200')} />
+      <div className="min-w-0 flex-1">
+        <p className="text-[14px] font-semibold">{skin.mock ? 'Mock skin scan' : 'Skin scan'}</p>
+        <p className="line-clamp-2 text-[12.5px] leading-snug text-white/80">{skin.line}</p>
+      </div>
+      <button onClick={onDetails} className="flex h-8 shrink-0 items-center gap-1 rounded-full bg-white/12 px-3 text-[12.5px] font-medium transition-colors hover:bg-white/20">
+        Details <ChevronDown className="h-3.5 w-3.5" />
+      </button>
       <Round label="Dismiss" onClick={onDismiss}>
         <X />
       </Round>

@@ -25,6 +25,12 @@ describe('YouCam photo checks', () => {
     expect(hint({ mouthOpen: 0.5 })).toMatch(/mouth/)
     expect(hint({ smile: 0.8 })).toMatch(/no smile/)
   })
+  it('rejects the dim light YouCam answered with error_lighting_dark', () => {
+    // these passed the old limits (mean ≥ 0.32, ≤ 6% crushed) but YouCam rejected similar photos
+    expect(hint({ light: { ...light, mean: 0.36 } })).toMatch(/Too dark/)
+    expect(hint({ light: { ...light, dark: 0.05 } })).toMatch(/Too dark/)
+    expect(hint({ light: { ...light, mean: 0.45, dark: 0.01 } })).toBeNull()
+  })
   it('flags dark, blown-out and uneven light', () => {
     expect(hint({ light: { ...light, mean: 0.2 } })).toMatch(/Too dark/)
     expect(hint({ light: { ...light, clipped: 0.1 } })).toMatch(/Too bright/)
