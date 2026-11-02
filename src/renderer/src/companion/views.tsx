@@ -2,6 +2,7 @@ import { AlertTriangle, ArrowLeftRight, ArrowRight, BookOpen, CalendarPlus, Chec
 import { motion } from 'motion/react'
 import { useState, type ReactNode } from 'react'
 import { label, type Product, type ProductResearch, type ResearchSource, type RoutinePeriod } from '@shared/models'
+import type { AssistantReply } from '@shared/assistant'
 import { alternativesFor, pricePerMl, type MatchResult } from '@shared/scoring'
 import { Orb } from '@renderer/components/Orb'
 import { MatchBadge, PriceTag, ProductArt, SourceBadge, useProductActions } from '@renderer/components/products'
@@ -138,6 +139,36 @@ export function HomeView({ hasProduct, onPick }: { hasProduct: boolean; onPick: 
   )
 }
 
+// ---------- Verdict ----------
+
+const VERDICTS: Record<AssistantReply['verdict'], { title: string; tone: 'good' | 'mixed' | 'bad' | 'unknown' }> = {
+  good_match: { title: 'Good for your skin', tone: 'good' },
+  mixed: { title: 'Mixed fit — read the notes', tone: 'mixed' },
+  not_recommended: { title: 'Not a good fit for you', tone: 'bad' },
+  not_applicable: { title: 'Can’t tell yet', tone: 'unknown' }
+}
+
+/** The answer in one line, plus the profile it was judged against, so the user can see it's about them. */
+function VerdictBanner({ verdict }: { verdict: AssistantReply['verdict'] }) {
+  const db = useDb()
+  const v = VERDICTS[verdict]
+  const p = db.profile
+  const shared = db.settings.privacy.sendProfileToAssistant
+  const basis = [p.skinType && `${label(p.skinType)} skin`, p.sensitivity && `${label(p.sensitivity).toLowerCase()} sensitivity`, ...p.concerns.slice(0, 3).map((c) => label(c).toLowerCase())].filter(Boolean).join(' · ')
+  const Icon = v.tone === 'good' ? CheckCircle2 : v.tone === 'unknown' ? CircleAlert : AlertTriangle
+  return (
+    <div className={cn('mt-3.5 rounded-[18px] px-3.5 py-3', v.tone === 'good' ? 'bg-emerald-400/15 ring-1 ring-mint-300/30' : v.tone === 'bad' ? 'bg-rose-400/15 ring-1 ring-rose-300/30' : v.tone === 'mixed' ? 'bg-amber-300/12 ring-1 ring-amber-300/30' : 'bg-white/[0.07]')}>
+      <p className="flex items-center gap-2 text-[16px] font-semibold">
+        <Icon className={cn('h-5 w-5 shrink-0', v.tone === 'good' ? 'text-mint-300' : v.tone === 'bad' ? 'text-rose-300' : v.tone === 'mixed' ? 'text-amber-200' : 'text-ink/70')} />
+        {v.title}
+      </p>
+      <p className="mt-1 pl-7 text-[12.5px] text-ink/75">
+        {!shared ? 'Your profile isn’t shared with the assistant (Settings › Privacy), so this is general.' : basis ? `Checked against your profile: ${basis}` : 'Add your skin type and concerns for a personal verdict.'}
+      </p>
+    </div>
+  )
+}
+
 // ---------- Research sources ----------
 
 const KIND_LABEL: Record<ProductResearch['findings'][number]['kind'], string> = {
@@ -267,6 +298,7 @@ export function ResponseView({ ctx, speaker, onReplay, send }: { ctx: CompanionC
           </div>
           <span className="rounded-pill bg-white/10 px-2.5 py-1 text-xs tabular-nums">{Math.floor(speaker.elapsed / 60)}:{String(speaker.elapsed % 60).padStart(2, '0')}</span>
         </div>
+        {product && <VerdictBanner verdict={r.verdict} />}
         <div className="mt-3.5 flex gap-3">
           <p className="flex-1 text-[14.5px] leading-[1.6] text-pretty">{r.answer}</p>
           {product && <ProductArt product={product} size={88} />}
