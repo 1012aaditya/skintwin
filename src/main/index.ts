@@ -131,11 +131,50 @@ function cornerBounds(mode: CompanionMode, corner: Corner, display = screen.getP
   }
 }
 
+// ---------- Island ----------
+// The island hangs from the top centre of the screen, around the camera notch like the
+// iPhone's Dynamic Island. Its window is a fixed width; the renderer draws the pill inside
+// it and the transparent rest lets clicks through.
+
+const ISLAND_WIDTH = 480
+const ISLAND_BAR_HEIGHT = 180 // pill plus room to grow (listening, progress, hover actions)
+const ISLAND_PANEL_HEIGHT = 760
+// macOS doesn't report the notch's size; every notched MacBook's is a little under this.
+const NOTCH_WIDTH = 200
+
+const isIsland = () => store.get().settings.companion.style === 'island'
+const menuBarHeight = (d: Electron.Display) => d.workArea.y - d.bounds.y
+// Notched MacBooks have a taller menu bar (≈37pt) than other Macs (≈24pt).
+const hasNotch = (d: Electron.Display) => process.platform === 'darwin' && d.internal && menuBarHeight(d) >= 32
+const islandDisplay = () => screen.getAllDisplays().find(hasNotch) ?? screen.getPrimaryDisplay()
+
+function islandInfo() {
+  const d = islandDisplay()
+  const notch = hasNotch(d)
+  return { notch, barHeight: notch ? menuBarHeight(d) : 0, notchWidth: notch ? NOTCH_WIDTH : 0 }
+}
+
+function islandBounds(mode: CompanionMode, display = islandDisplay()) {
+  const height = mode === 'expanded' ? Math.min(ISLAND_PANEL_HEIGHT, display.workArea.height) : ISLAND_BAR_HEIGHT
+  return { x: Math.round(display.bounds.x + (display.bounds.width - ISLAND_WIDTH) / 2), y: display.bounds.y, width: ISLAND_WIDTH, height }
+}
+
+const companionBounds = (mode: CompanionMode) =>
+  isIsland() ? islandBounds(mode) : cornerBounds(mode, store.get().settings.companion.corner, companionWindow ? screen.getDisplayMatching(companionWindow.getBounds()) : undefined)
+
+/** The island sits above the menu bar, so it needs a higher window level than the floating orb. */
+function applyCompanionLevel() {
+  const win = companionWindow
+  if (!win || win.isDestroyed()) return
+  if (isIsland()) win.setAlwaysOnTop(true, 'status')
+  else win.setAlwaysOnTop(store.get().settings.companion.alwaysOnTop, 'floating')
+}
+
 function placeCompanion(animate = true) {
   const win = companionWindow
   if (!win || win.isDestroyed()) return
   placingUntil = Date.now() + 600
-  win.setBounds(cornerBounds(companionMode, store.get().settings.companion.corner, screen.getDisplayMatching(win.getBounds())), animate)
+  win.setBounds(companionBounds(companionMode), animate && !isIsland())
 }
 
 /** After a drag, snap to whichever corner of that display is closest. */
@@ -157,8 +196,9 @@ function createCompanionWindow(): BrowserWindow {
   if (companionWindow && !companionWindow.isDestroyed()) return companionWindow
   companionMode = 'orb'
   companionWindow = new BrowserWindow({
-    ...cornerBounds('orb', store.get().settings.companion.corner),
+    ...companionBounds('orb'),
     frame: false,
+    enableLargerThanScreen: true, // lets the island sit over the menu bar
     transparent: true,
     resizable: false,
     hasShadow: false,
@@ -174,7 +214,7 @@ function createCompanionWindow(): BrowserWindow {
     webPreferences: webPreferences()
   })
   if (process.platform === 'darwin') companionWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true })
-  companionWindow.setAlwaysOnTop(store.get().settings.companion.alwaysOnTop, 'floating')
+  applyCompanionLevel()
   hardenWindow(companionWindow)
   companionWindow.on('close', (e) => {
     if (!quitting) {
@@ -184,8 +224,12 @@ function createCompanionWindow(): BrowserWindow {
   })
   companionWindow.on('closed', () => (companionWindow = null))
   // Native drags (panel header) end with 'moved' on macOS: snap to a corner.
-  companionWindow.on('moved', () => Date.now() > placingUntil && snapToNearestCorner())
-  companionWindow.once('ready-to-show', () => companionWindow?.showInactive())
+  companionWindow.on('moved', () => !isIsland() && Date.now() > placingUntil && snapToNearestCorner())
+  companionWindow.once('ready-to-show', () => {
+    // macOS can nudge a new window below the menu bar; put the island back on top of it.
+    placeCompanion(false)
+    companionWindow?.showInactive()
+  })
   loadPage(companionWindow, 'companion')
   return companionWindow
 }
@@ -553,6 +597,7 @@ function registerIpc() {
   // Manual drag for the orb: a click must still register as a click, so it can't be a native drag region.
   let dragStart: { x: number; y: number } | null = null
   ipcMain.handle('companion:dragStart', () => {
+    if (isIsland()) return // the island stays put at the top of the screen
     const b = companionWindow?.getBounds()
     dragStart = b ? { x: b.x, y: b.y } : null
   })
@@ -579,11 +624,16 @@ function registerIpc() {
       ...(opts?.hasProduct ? [{ label: 'Quick actions for this product', click: cmd({ type: 'menu', action: 'quick-actions' }) }] : []),
       { label: 'My skin profile', click: cmd({ type: 'menu', action: 'profile' }) },
       { type: 'separator' },
-      { label: 'Keep on top', type: 'checkbox', checked: c.alwaysOnTop, click: (item) => {
-        companionWindow?.setAlwaysOnTop(item.checked, 'floating')
-        store.mutate({ type: 'settings.update', patch: { companion: { alwaysOnTop: item.checked } } })
-      } },
-      { label: 'Move to', submenu: CORNERS.map((corner) => ({ label: corner.replace('-', ' ').replace(/\b\w/g, (m) => m.toUpperCase()), type: 'radio' as const, checked: c.corner === corner, click: moveTo(corner) })) },
+      ...(c.style === 'orb'
+        ? [
+            { label: 'Keep on top', type: 'checkbox' as const, checked: c.alwaysOnTop, click: (item: Electron.MenuItem) => {
+              store.mutate({ type: 'settings.update', patch: { companion: { alwaysOnTop: item.checked } } })
+              applyCompanionLevel()
+            } },
+            { label: 'Move to', submenu: CORNERS.map((corner) => ({ label: corner.replace('-', ' ').replace(/\b\w/g, (m) => m.toUpperCase()), type: 'radio' as const, checked: c.corner === corner, click: moveTo(corner) })) }
+          ]
+        : []),
+      { label: c.style === 'island' ? 'Switch to floating orb' : 'Switch to top island', click: () => store.mutate({ type: 'settings.update', patch: { companion: { style: c.style === 'island' ? 'orb' : 'island' } } }) },
       { type: 'separator' },
       { label: 'Open SkinTwin', click: () => createMainWindow() },
       { label: 'Shortcut settings…', click: () => createMainWindow('/settings') },
@@ -602,9 +652,10 @@ function registerIpc() {
     companionWindow?.setIgnoreMouseEvents(!!through, { forward: true })
   })
   ipcMain.handle('companion:setPinned', (_e, pinned: boolean) => {
-    companionWindow?.setAlwaysOnTop(!!pinned, 'floating')
     store.mutate({ type: 'settings.update', patch: { companion: { alwaysOnTop: !!pinned } } })
+    applyCompanionLevel()
   })
+  ipcMain.handle('companion:islandInfo', () => islandInfo())
   ipcMain.handle('app:open', (_e, route: string) => {
     createMainWindow(typeof route === 'string' && route.startsWith('/') ? route : '/discover')
   })
@@ -755,6 +806,16 @@ else {
         setAppMenu()
       }
     })
+    // Switching between island and orb (or moving the orb from Settings) re-places the window.
+    const placement = () => `${store.get().settings.companion.style}|${store.get().settings.companion.corner}`
+    let lastPlacement = placement()
+    store.subscribe(() => {
+      if (placement() === lastPlacement) return
+      lastPlacement = placement()
+      applyCompanionLevel()
+      placeCompanion(false)
+    })
+    screen.on('display-metrics-changed', () => placeCompanion(false))
 
     try {
       bridgeServer = await startBridge(config.bridgePort, {

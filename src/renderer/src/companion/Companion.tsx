@@ -7,6 +7,7 @@ import { prettyAccelerator } from '@shared/shortcuts'
 import { cn } from '@renderer/lib/cn'
 import { blobToBase64 } from '@renderer/lib/media'
 import { newRequestId, useProviders, useSnapshot } from '@renderer/lib/store'
+import { IslandBar, NO_NOTCH, panelClip, pillClip, topRow, type IslandInfo } from './Island'
 import { companionReducer, initialContext, isExpanded, type CompanionContext, type CompanionState } from './machine'
 import { MicError, toWav16k, useRecorder, useSpeaker } from './voice'
 import { ComparisonView, ErrorView, HomeView, ProcessingSteps, ProductAnalysisView, ProductDetectedView, ProfilePeekView, QuickActionsView, ResponseView } from './views'
@@ -159,6 +160,12 @@ export function Companion() {
   const showPanel = shown === 'expanded'
   useClickThrough(!expanded)
 
+  const island = snap?.settings.companion.style === 'island'
+  const [islandInfo, setIslandInfo] = useState<IslandInfo>(NO_NOTCH)
+  useEffect(() => {
+    if (island) void window.skintwin.companion.islandInfo().then(setIslandInfo)
+  }, [island])
+
   // commands from main (shortcut, browser extension, main window)
   useEffect(
     () =>
@@ -214,6 +221,13 @@ export function Companion() {
 
   const mood: OrbMood = ctx.state === 'listening' ? 'listening' : ctx.state === 'processing' ? 'thinking' : speaker.speaking ? 'speaking' : ctx.state === 'error' || ctx.state === 'permission_required' ? 'concerned' : 'idle'
   const { alwaysOnTop: pinned, corner, shortcut, voiceShortcut } = snap.settings.companion
+  const collapse = () => {
+    if (ctx.state === 'listening' || ctx.state === 'processing') cancel()
+    setTyping(false)
+    setVoiceNotice(false)
+    setPanel(false)
+    dispatch({ type: 'RESET' })
+  }
   const bottom = corner.startsWith('bottom')
   const right = corner.endsWith('right')
   // orb centre inside the panel: 12px window padding + 20px handle padding + 48px radius, minus the panel's own 12px inset
@@ -230,7 +244,24 @@ export function Companion() {
     <MotionConfig reducedMotion="user" transition={{ duration: 0.24, ease: EASE }}>
       <div className="relative h-full w-full select-none">
         <AnimatePresence initial={false} onExitComplete={() => targetRef.current !== 'expanded' && void window.skintwin.companion.setMode(targetRef.current)}>
-          {!showPanel ? (
+          {!showPanel && island ? (
+            <motion.div key="island" className="absolute inset-0" initial={{ opacity: 0 }} animate={{ opacity: 1, transition: { duration: 0.2, delay: 0.1 } }} exit={{ opacity: 0, transition: { duration: 0.12 } }}>
+              <IslandBar
+                info={islandInfo}
+                ctx={ctx}
+                mood={mood}
+                level={recorder.level}
+                stageTitle={STAGE_TITLE[ctx.stage ?? 'thinking']}
+                onOpen={() => (ctx.productId ? dispatch({ type: 'PRODUCT_DETECTED', productId: ctx.productId }) : setTyping(true))}
+                onTalk={() => void listen()}
+                onType={() => setTyping(true)}
+                onCircle={() => void window.skintwin.circle.start()}
+                onSend={() => void finishListening()}
+                onCancel={cancel}
+                onMenu={() => void window.skintwin.companion.menu({ hasProduct: !!ctx.productId })}
+              />
+            </motion.div>
+          ) : !showPanel ? (
             <motion.div key="compact" className={cn('absolute inset-3 flex gap-2', bottom ? 'flex-col-reverse' : 'flex-col', right ? 'items-end' : 'items-start')} initial={{ opacity: 0, scale: 0.85 }} animate={{ opacity: 1, scale: 1, transition: { duration: 0.32, ease: EASE, delay: 0.12 } }} exit={{ opacity: 0, scale: 0.8, transition: { duration: 0.2 } }} style={{ transformOrigin: `${bottom ? 'bottom' : 'top'} ${right ? 'right' : 'left'}` }}>
               <OrbHandle
                 label={ctx.state === 'listening' ? 'Stop and send' : 'Talk to SkinTwin'}
@@ -275,25 +306,22 @@ export function Companion() {
             <motion.div
               key="expanded"
               data-solid
-              className="glass-strong absolute inset-3 flex flex-col overflow-hidden rounded-[30px]"
-              // Bloom out of the orb: a circle the size of the orb, centred on it, grows to fill the panel.
-              initial={{ clipPath: bloom(44) }}
-              animate={{ clipPath: bloom(bloomRadius()), transition: { duration: 0.52, ease: BLOOM_EASE } }}
-              exit={{ clipPath: bloom(44), transition: { duration: 0.32, ease: [0.55, 0, 0.8, 0.2] } }}
+              className={cn('absolute flex flex-col overflow-hidden', island ? 'inset-x-0 top-0 bottom-3' : 'glass-strong inset-3 rounded-[30px]')}
+              // Island: drop down out of the pill. Orb: bloom out of the orb, a circle growing from its centre.
+              style={island ? { background: `linear-gradient(180deg, #000 0px, #000 ${topRow(islandInfo) + 6}px, #1b1342 ${topRow(islandInfo) + 140}px, #2a1d62 100%)` } : undefined}
+              initial={{ clipPath: island ? pillClip(islandInfo, window.innerWidth, window.innerHeight - 12) : bloom(44) }}
+              animate={{ clipPath: island ? panelClip(islandInfo) : bloom(bloomRadius()), transition: { duration: island ? 0.46 : 0.52, ease: BLOOM_EASE } }}
+              exit={{ clipPath: island ? pillClip(islandInfo, window.innerWidth, window.innerHeight - 12) : bloom(44), transition: { duration: 0.32, ease: [0.55, 0, 0.8, 0.2] } }}
             >
+              {island && <div className="shrink-0" style={{ height: topRow(islandInfo) }} />}
               <motion.div className="flex min-h-0 flex-1 flex-col" initial={{ opacity: 0, y: bottom ? 10 : -10 }} animate={{ opacity: 1, y: 0, transition: { duration: 0.3, delay: 0.16, ease: EASE } }} exit={{ opacity: 0, transition: { duration: 0.12 } }}>
               <PanelHeader
                 ctx={ctx}
                 typing={typing}
                 pinned={pinned}
+                island={island}
                 onBack={SUBVIEWS.includes(ctx.state) ? () => dispatch({ type: 'BACK' }) : undefined}
-                onCollapse={() => {
-                  if (ctx.state === 'listening' || ctx.state === 'processing') cancel()
-                  setTyping(false)
-                  setVoiceNotice(false)
-                  setPanel(false)
-                  dispatch({ type: 'RESET' })
-                }}
+                onCollapse={collapse}
               />
               <div className="no-drag scroll-area min-h-0 flex-1 px-5 pt-1 pb-4">
                 <AnimatePresence mode="wait" initial={false}>
@@ -508,10 +536,10 @@ function IconButton({ label, onClick, children }: { label: string; onClick: () =
   )
 }
 
-function PanelHeader({ ctx, typing, pinned, onBack, onCollapse }: { ctx: CompanionContext; typing: boolean; pinned: boolean; onBack?: () => void; onCollapse: () => void }) {
+function PanelHeader({ ctx, typing, pinned, island, onBack, onCollapse }: { ctx: CompanionContext; typing: boolean; pinned: boolean; island: boolean; onBack?: () => void; onCollapse: () => void }) {
   const subtitle = SUBTITLE[ctx.state] ?? (typing && !isExpanded(ctx.state) ? 'Ask me anything about your skin' : null)
   return (
-    <div className="drag flex items-center gap-2.5 px-4 pt-4 pb-3">
+    <div className={cn('flex items-center gap-2.5 px-4 pb-3', island ? 'pt-3' : 'drag pt-4')}>
       {onBack ? (
         <IconButton label="Back" onClick={onBack}>
           <ArrowLeft className="h-[18px] w-[18px]" />
@@ -532,10 +560,12 @@ function PanelHeader({ ctx, typing, pinned, onBack, onCollapse }: { ctx: Compani
           )}
         </AnimatePresence>
       </div>
-      <IconButton label={pinned ? 'Unpin (stop floating on top)' : 'Pin on top'} onClick={() => window.skintwin.companion.setPinned(!pinned)}>
-        {pinned ? <Pin className="h-4 w-4 fill-current" /> : <PinOff className="h-4 w-4" />}
-      </IconButton>
-      <IconButton label="Shrink to orb" onClick={onCollapse}>
+      {!island && (
+        <IconButton label={pinned ? 'Unpin (stop floating on top)' : 'Pin on top'} onClick={() => window.skintwin.companion.setPinned(!pinned)}>
+          {pinned ? <Pin className="h-4 w-4 fill-current" /> : <PinOff className="h-4 w-4" />}
+        </IconButton>
+      )}
+      <IconButton label={island ? 'Back to island' : 'Shrink to orb'} onClick={onCollapse}>
         <Minus className="h-4 w-4" />
       </IconButton>
       <IconButton label="Hide companion" onClick={() => window.skintwin.companion.hide()}>

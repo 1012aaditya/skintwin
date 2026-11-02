@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import {
   COMPANION_ACTION_TYPES,
+  COMPANION_STYLES,
   CORNERS,
   FREQUENCIES,
   INVENTORY_STATUS,
@@ -89,7 +90,8 @@ export const MutationSchema = z.discriminatedUnion('type', [
             alwaysOnTop: z.boolean(),
             shortcut: z.string().max(60),
             voiceShortcut: z.string().max(60),
-            corner: z.enum(CORNERS)
+            corner: z.enum(CORNERS),
+            style: z.enum(COMPANION_STYLES)
           })
           .partial(),
         privacy: SettingsSchema.shape.privacy.partial()

@@ -287,6 +287,8 @@ export const MarketplaceListingSchema = z.object({
 export type MarketplaceListing = z.infer<typeof MarketplaceListingSchema>
 
 export const CORNERS = ['bottom-right', 'bottom-left', 'top-right', 'top-left'] as const
+/** island = a Dynamic-Island-style pill around the notch at the top of the screen; orb = the floating corner orb */
+export const COMPANION_STYLES = ['island', 'orb'] as const
 export type Corner = (typeof CORNERS)[number]
 export const DEFAULT_SHORTCUTS = { toggle: 'Alt+Space', voice: 'Alt+Shift+Space' } as const
 
@@ -304,7 +306,8 @@ export const SettingsSchema = z.object({
     alwaysOnTop: z.boolean(),
     shortcut: z.string().max(60).default(DEFAULT_SHORTCUTS.toggle),
     voiceShortcut: z.string().max(60).default(DEFAULT_SHORTCUTS.voice),
-    corner: z.enum(CORNERS).default('bottom-right')
+    corner: z.enum(CORNERS).default('bottom-right'),
+    style: z.enum(COMPANION_STYLES).default('island')
   }),
   privacy: z.object({
     storeConversations: z.boolean(),

@@ -142,7 +142,22 @@ function CompanionSettings() {
       <ShortcutRow label="Show / hide companion" value={c.shortcut} ok={status?.toggle} other={c.voiceShortcut} onChange={(v) => set({ shortcut: v })} onReset={() => set({ shortcut: DEFAULT_SHORTCUTS.toggle })} />
       <ShortcutRow label="Talk (press again to send)" value={c.voiceShortcut} ok={status?.voice} other={c.shortcut} onChange={(v) => set({ voiceShortcut: v })} onReset={() => set({ voiceShortcut: DEFAULT_SHORTCUTS.voice })} />
       <div>
-        <p className="mb-2 text-sm">Screen corner</p>
+        <p className="mb-2 text-sm">Style</p>
+        <div className="grid w-fit grid-cols-2 gap-2 rounded-2xl bg-white/6 p-2" role="radiogroup" aria-label="Companion style">
+          {([['island', 'Top island', 'A pill around the notch at the top of your screen'], ['orb', 'Floating orb', 'A small orb in a corner you choose']] as const).map(([k, title, desc]) => (
+            <button key={k} role="radio" aria-checked={c.style === k} onClick={() => set({ style: k })} className={cn('w-52 rounded-xl border p-3 text-left transition-colors', c.style === k ? 'border-lilac-200 bg-lilac-400/30' : 'border-white/12 bg-white/5 hover:bg-white/10')}>
+              <span className="relative mb-2.5 block h-10 rounded-lg bg-white/8">
+                {k === 'island' ? <span className="absolute top-0 left-1/2 h-3 w-14 -translate-x-1/2 rounded-b-lg bg-black" /> : <span className="absolute right-2 bottom-2 h-3.5 w-3.5 rounded-full bg-gradient-to-br from-white to-lilac-400 shadow-glow-soft" />}
+              </span>
+              <span className="block text-sm font-medium">{title}</span>
+              <span className="mt-0.5 block text-xs text-ink-faint">{desc}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+      {c.style === 'orb' && (
+        <div>
+          <p className="mb-2 text-sm">Screen corner</p>
         <div className="grid w-fit grid-cols-2 gap-2 rounded-2xl bg-white/6 p-2" role="radiogroup" aria-label="Companion corner">
           {(['top-left', 'top-right', 'bottom-left', 'bottom-right'] as const).map((k) => (
             <button key={k} role="radio" aria-checked={c.corner === k} aria-label={k.replace('-', ' ')} onClick={() => set({ corner: k })} className={cn('relative h-14 w-24 rounded-xl border transition-colors', c.corner === k ? 'border-lilac-200 bg-lilac-400/30' : 'border-white/12 bg-white/5 hover:bg-white/10')}>
@@ -150,10 +165,11 @@ function CompanionSettings() {
             </button>
           ))}
         </div>
-        <p className="mt-2 text-xs text-ink-faint">You can also drag the orb — it snaps to the nearest corner.</p>
-      </div>
+          <p className="mt-2 text-xs text-ink-faint">You can also drag the orb — it snaps to the nearest corner.</p>
+        </div>
+      )}
       <Toggle checked={c.launchOnStartup} onChange={(x) => set({ launchOnStartup: x })} label="Show companion when SkinTwin starts" />
-      <Toggle checked={c.alwaysOnTop} onChange={(x) => window.skintwin.companion.setPinned(x)} label="Keep companion above other windows" />
+      {c.style === 'orb' && <Toggle checked={c.alwaysOnTop} onChange={(x) => window.skintwin.companion.setPinned(x)} label="Keep companion above other windows" />}
     </Card>
   )
 }

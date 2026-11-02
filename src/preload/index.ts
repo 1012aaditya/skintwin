@@ -30,6 +30,7 @@ const api: SkinTwinApi = {
     dragMove: (dx, dy) => ipcRenderer.invoke('companion:dragMove', dx, dy),
     dragEnd: () => ipcRenderer.invoke('companion:dragEnd'),
     menu: (opts) => ipcRenderer.invoke('companion:menu', opts),
+    islandInfo: () => ipcRenderer.invoke('companion:islandInfo'),
     onCommand: on('companion:command')
   },
   circle: {

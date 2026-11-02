@@ -1,6 +1,6 @@
 # SkinTwin
 
-A personal AI skincare companion for the desktop: a full app (profile, skin analysis, routines, inventory, product insights, comparison, saved products, shop), a **floating voice companion** that sits on top of your other windows, a **browser extension** that sends the product you're viewing to the companion, and **Circle a product** (⌥⇧C): circle any product anywhere on screen to ask whether it suits your skin.
+A personal AI skincare companion for the desktop: a full app (profile, skin analysis, routines, inventory, product insights, comparison, saved products, shop), a **voice companion** that lives in a Dynamic-Island-style pill around the MacBook notch (or as a floating orb, if you prefer — Settings › Voice & assistant › Companion), a **browser extension** that sends the product you're viewing to the companion, and **Circle a product** (⌥⇧C): circle any product anywhere on screen to ask whether it suits your skin.
 
 ```
 ┌────────────── Electron main process (Node) ───────────────┐

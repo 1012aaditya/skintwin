@@ -169,7 +169,36 @@ for (let i = 0; i < 20 && !companion; i++) {
 }
 check(!!companion, 'companion window opened')
 watch(companion, 'companion')
+
+// New installs get the island: a pill hanging from the top centre of the screen.
+await companion.waitForSelector('[aria-label="Open SkinTwin"]')
+const islandBounds = () => app.evaluate(({ BrowserWindow, screen }) => {
+  const w = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('companion'))
+  const d = screen.getDisplayMatching(w.getBounds())
+  return { b: w.getBounds(), d: d.bounds }
+})
+let ib = await islandBounds()
+check(db().settings.companion.style === 'island' && ib.b.y === ib.d.y && Math.abs(ib.b.x + ib.b.width / 2 - (ib.d.x + ib.d.width / 2)) <= 1, 'island sits at the top centre of the screen')
+await sleep(600)
+await shot(companion, '20-island-idle')
+await companion.hover('[aria-label="Open SkinTwin"]')
+await companion.waitForSelector('button:has-text("Circle")')
+await sleep(500)
+await shot(companion, '20-island-hover')
+check(true, 'hovering the island shows Talk / Ask / Circle')
+await companion.click('[aria-label="Open SkinTwin"]')
+await companion.waitForSelector('text=Ask me anything about your skin')
+await sleep(700)
+ib = await islandBounds()
+check(ib.b.height > 400, 'clicking the island drops the panel down')
+await shot(companion, '20-island-panel')
+await companion.click('[aria-label="Back to island"]')
+await companion.waitForSelector('[aria-label="Open SkinTwin"]')
+
+// The rest of the companion checks use the floating orb.
+await main.evaluate(() => window.skintwin.db.mutate({ type: 'settings.update', patch: { companion: { style: 'orb' } } }))
 await companion.waitForSelector('[aria-label="Talk to SkinTwin"]')
+await sleep(900)
 await shot(companion, '20-companion-idle')
 
 // orb-only idle window sits in the bottom-right corner; dragging it snaps to the nearest corner

@@ -44,6 +44,8 @@ export interface SkinTwinApi {
     dragMove(dx: number, dy: number): Promise<void>
     dragEnd(): Promise<void>
     menu(opts: { hasProduct: boolean }): Promise<void>
+    /** Whether this Mac has a camera notch, and the menu bar height the island lines up with. */
+    islandInfo(): Promise<{ notch: boolean; barHeight: number; notchWidth: number }>
     onCommand(fn: (c: CompanionCommand) => void): () => void
   }
   circle: {
