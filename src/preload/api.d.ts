@@ -9,6 +9,9 @@ export type CompanionCommand =
   | { type: 'analyze-product'; productId: string }
   | { type: 'compare-product'; productId: string }
   | { type: 'detection-failed'; reason: string }
+  | { type: 'circle-reading'; requestId: string }
+  | { type: 'circle-result'; requestId: string; productId: string }
+  | { type: 'circle-failed'; requestId: string | null; kind: 'screen_denied' | 'screen_unreadable' | 'provider'; message: string }
 
 export type MediaStatus = 'not-determined' | 'granted' | 'denied' | 'restricted' | 'unknown'
 
@@ -41,6 +44,13 @@ export interface SkinTwinApi {
     dragEnd(): Promise<void>
     menu(opts: { hasProduct: boolean }): Promise<void>
     onCommand(fn: (c: CompanionCommand) => void): () => void
+  }
+  circle: {
+    start(): Promise<void>
+    /** The frozen screenshot, only for the circle overlay window. */
+    image(): Promise<string | null>
+    done(result: { points: { x: number; y: number }[]; width: number; height: number } | null): Promise<void>
+    openSettings(): Promise<void>
   }
   app: { open(route: string): Promise<void>; onNavigate(fn: (route: string) => void): () => void }
   openExternal(url: string): Promise<void>

@@ -13,7 +13,7 @@ export type CompanionState =
   | 'permission_required'
   | 'error'
 
-export type ErrorKind = 'microphone_denied' | 'microphone_unavailable' | 'stt_not_configured' | 'page_unreadable' | 'product_unavailable' | 'network' | 'provider' | 'unknown'
+export type ErrorKind = 'microphone_denied' | 'microphone_unavailable' | 'stt_not_configured' | 'page_unreadable' | 'screen_denied' | 'screen_unreadable' | 'product_unavailable' | 'network' | 'provider' | 'unknown'
 
 export interface CompanionError {
   kind: ErrorKind
@@ -26,7 +26,7 @@ export interface CompanionContext {
   productId: string | null
   /** id of the single request allowed to resolve the current processing step */
   requestId: string | null
-  stage: 'transcribing' | 'thinking' | null
+  stage: 'transcribing' | 'reading' | 'thinking' | null
   question: string | null
   viaVoice: boolean
   response: AskResponse | null
@@ -46,6 +46,10 @@ export type CompanionEvent =
   | { type: 'FAILED'; requestId: string | null; error: CompanionError }
   | { type: 'PERMISSION_REQUIRED'; error: CompanionError }
   | { type: 'PRODUCT_DETECTED'; productId: string }
+  /** Main is reading a region the user circled on screen. */
+  | { type: 'READING_SCREEN'; requestId: string }
+  /** The circled product was read; go straight on to asking about it. */
+  | { type: 'SCREEN_READ'; requestId: string; productId: string; nextRequestId: string; question: string }
   | { type: 'OPEN_ANALYSIS'; productId?: string }
   | { type: 'OPEN_COMPARISON'; productId?: string }
   | { type: 'OPEN_QUICK_ACTIONS'; productId?: string }
@@ -125,6 +129,14 @@ export function companionReducer(ctx: CompanionContext, ev: CompanionEvent): Com
       // Don't interrupt listening/thinking; just remember the product.
       if (BUSY.includes(ctx.state)) return { ...ctx, productId: ev.productId }
       return { ...ctx, state: 'product_detected', productId: ev.productId, response: null, error: null }
+
+    case 'READING_SCREEN':
+      if (ctx.state === 'processing') return ctx
+      return { ...ctx, state: 'processing', stage: 'reading', requestId: ev.requestId, question: null, viaVoice: false, response: null, error: null }
+
+    case 'SCREEN_READ':
+      if (ctx.state !== 'processing' || ctx.requestId !== ev.requestId) return ctx // cancelled
+      return { ...ctx, state: 'processing', stage: 'thinking', requestId: ev.nextRequestId, productId: ev.productId, question: ev.question, response: null }
 
     case 'OPEN_ANALYSIS': {
       const productId = ev.productId ?? ctx.productId

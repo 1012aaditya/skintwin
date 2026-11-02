@@ -111,6 +111,12 @@ export function SourceBadge({ product }: { product: Product }) {
         From page
       </Badge>
     )
+  if (s.kind === 'screen')
+    return (
+      <Badge tone="lilac" size="sm" title={s.label}>
+        From screen
+      </Badge>
+    )
   if (s.kind === 'manual') return <Badge size="sm">Added by you</Badge>
   return (
     <Badge tone="success" size="sm">

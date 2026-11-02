@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowLeftRight, ArrowRight, CalendarPlus, Check, CheckCircle2, CircleAlert, Crown, Droplet, Droplets, ExternalLink, Globe, Heart, Keyboard, Layers, Leaf, Loader2, MessageCircle, Mic, MicOff, PackageCheck, Pause, Play, RefreshCcw, ScanFace, Settings, Sparkles, Sun, WifiOff, Zap } from 'lucide-react'
+import { AlertTriangle, ArrowLeftRight, ArrowRight, CalendarPlus, Check, CheckCircle2, CircleAlert, Crown, Droplet, Droplets, ExternalLink, Globe, Heart, Keyboard, Layers, Leaf, Loader2, MessageCircle, Mic, MicOff, PackageCheck, Pause, Play, RefreshCcw, ScanFace, ScanSearch, Settings, Sparkles, Sun, WifiOff, Zap } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useState, type ReactNode } from 'react'
 import { label, type Product, type RoutinePeriod } from '@shared/models'
@@ -128,6 +128,11 @@ export function HomeView({ hasProduct, onPick }: { hasProduct: boolean; onPick: 
             {q}
           </motion.button>
         ))}
+        <motion.button initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 * prompts.length }} onClick={() => void window.skintwin.circle.start()} className="flex items-center gap-3 rounded-[18px] border border-lilac-200/30 bg-lilac-400/15 px-4 py-3 text-left text-[14px] text-ink transition-colors hover:bg-lilac-400/25">
+          <ScanSearch className="h-4 w-4 shrink-0 text-lilac-200" />
+          <span className="flex-1">Circle a product on screen</span>
+          <kbd className="rounded-md bg-white/12 px-1.5 py-0.5 text-[11px] font-semibold text-ink/80">⌥⇧C</kbd>
+        </motion.button>
       </div>
     </div>
   )
@@ -139,7 +144,8 @@ export function ProcessingSteps({ ctx, hasProduct, inPanel }: { ctx: CompanionCo
   const thinking = ctx.stage === 'thinking'
   const steps: { label: string; state: 'done' | 'active' | 'todo' }[] = []
   if (ctx.viaVoice) steps.push({ label: 'Understanding your question', state: thinking ? 'done' : 'active' })
-  if (hasProduct) steps.push({ label: 'Reading the product details', state: thinking ? 'done' : 'todo' })
+  if (ctx.stage === 'reading') steps.push({ label: 'Reading what you circled', state: 'active' })
+  else if (hasProduct) steps.push({ label: 'Reading the product details', state: thinking ? 'done' : 'todo' })
   steps.push({ label: 'Checking against your skin profile', state: thinking ? 'done' : 'todo' })
   steps.push({ label: 'Preparing a recommendation', state: thinking ? 'active' : 'todo' })
   return (
@@ -633,6 +639,12 @@ const ERROR_COPY: Record<CompanionError['kind'], { title: string; icon: ReactNod
   },
   microphone_unavailable: { title: 'No microphone found', icon: <MicOff /> },
   stt_not_configured: { title: 'Voice input isn’t set up', icon: <Keyboard /> },
+  screen_denied: {
+    title: 'Allow screen access?',
+    icon: <ScanSearch />,
+    steps: ['Open System Settings › Privacy & Security › Screen & System Audio Recording', 'Turn on SkinTwin (or Electron while developing)', 'Quit and reopen SkinTwin, then circle again']
+  },
+  screen_unreadable: { title: 'Couldn’t spot a product', icon: <ScanSearch />, tips: ['Circle just one product, including its name', 'Zoom in if the text is tiny', 'To judge the formula, also circle its ingredient list'] },
   page_unreadable: { title: 'Couldn’t read this page', icon: <Globe />, tips: ['The page might not be a product page', 'Try again once it has fully loaded', 'Or add the product manually in SkinTwin'] },
   product_unavailable: { title: 'Product details unavailable', icon: <CircleAlert /> },
   network: { title: 'Connection problem', icon: <WifiOff /> },
@@ -686,6 +698,16 @@ export function ErrorView({ error, send, onRetry, onType }: { error: CompanionEr
         {error.kind === 'stt_not_configured' && (
           <Action onClick={() => window.skintwin.app.open('/settings')}>
             <Settings /> Voice settings
+          </Action>
+        )}
+        {error.kind === 'screen_denied' && (
+          <Action tone="primary" onClick={() => void window.skintwin.circle.openSettings()}>
+            <Settings /> Open Screen Recording settings
+          </Action>
+        )}
+        {error.kind === 'screen_unreadable' && (
+          <Action tone="primary" onClick={() => void window.skintwin.circle.start()}>
+            <ScanSearch /> Circle again
           </Action>
         )}
         {error.kind === 'page_unreadable' && <Action onClick={() => window.skintwin.app.open('/inventory')}>Add product manually</Action>}

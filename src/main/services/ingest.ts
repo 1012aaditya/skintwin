@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto'
 import { splitIngredientText } from '@shared/ingredients'
 import type { Product, ProductCategory } from '@shared/models'
-import { parseSizeMl, sanitizeExtracted, type ExtractedProduct } from '@shared/protocol'
+import type { ScreenRead } from '@shared/circle'
+import { parseSizeMl, sanitizeExtracted, sanitizeText, type ExtractedProduct } from '@shared/protocol'
 
 const CATEGORY_HINTS: [RegExp, ProductCategory][] = [
   [/sunscreen|spf|sun ?block|uv /i, 'sunscreen'],
@@ -50,6 +51,46 @@ export function productFromExtraction(raw: ExtractedProduct, now: string): Produ
     retailer: p.retailer ?? host,
     claims: [...new Set(claims)],
     source: { kind: 'browser', label: `Detected on ${host} (${p.method})`, url: p.url, fetchedAt: now, verified: false },
+    createdAt: now
+  }
+}
+
+/** A product the user circled on screen stays "recent" this long, so a second circle around its ingredient list can fill them in. */
+export const SCREEN_MERGE_MS = 15 * 60_000
+
+/**
+ * Turn what Claude read from a circled screen region into a product. Returns null when it
+ * isn't a readable product. A circle that only caught an ingredient list fills in the
+ * ingredients of the product circled just before it (if that one had none).
+ */
+export function productFromScreenRead(read: ScreenRead, now: string, recent: Product | null): Product | null {
+  const name = sanitizeText(read.name, 200)
+  const brand = sanitizeText(read.brand, 120) ?? ''
+  const ingredientsText = sanitizeText(read.ingredientsText, 6000)
+  const ingredients = ingredientsText ? splitIngredientText(ingredientsText).slice(0, 120) : []
+  const confidence = `${read.confidence} confidence`
+
+  if (!read.isSkincareProduct || !name) {
+    const fresh = recent?.source.kind === 'screen' && Date.parse(now) - Date.parse(recent.source.fetchedAt) < SCREEN_MERGE_MS
+    if (!fresh || !ingredients.length || recent.ingredients.length) return null
+    return { ...recent, ingredients, source: { ...recent.source, label: `${recent.source.label}; ingredients read from a second circle`, fetchedAt: now } }
+  }
+
+  const claims = read.claims.map((c) => sanitizeText(c, 80)).filter((c): c is string => !!c)
+  return {
+    id: `screen:${createHash('sha256').update(`${brand}|${name}`.toLowerCase()).digest('hex').slice(0, 16)}`,
+    name,
+    brand,
+    category: guessCategory(`${name} ${claims.join(' ')}`),
+    sizeMl: parseSizeMl(`${read.sizeText ?? ''} ${name}`),
+    description: null,
+    imageUrl: null,
+    ingredients,
+    price: null,
+    url: null,
+    retailer: null,
+    claims: [...new Set(claims)].slice(0, 10),
+    source: { kind: 'screen', label: `Read from your screen (${confidence})`, url: null, fetchedAt: now, verified: false },
     createdAt: now
   }
 }

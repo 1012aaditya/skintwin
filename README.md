@@ -1,6 +1,6 @@
 # SkinTwin
 
-A personal AI skincare companion for the desktop: a full app (profile, skin analysis, routines, inventory, product insights, comparison, saved products, shop), a **floating voice companion** that sits on top of your other windows, and a **browser extension** that sends the product you're viewing to the companion.
+A personal AI skincare companion for the desktop: a full app (profile, skin analysis, routines, inventory, product insights, comparison, saved products, shop), a **floating voice companion** that sits on top of your other windows, a **browser extension** that sends the product you're viewing to the companion, and **Circle a product** (⌥⇧C): circle any product anywhere on screen to ask whether it suits your skin.
 
 ```
 ┌────────────── Electron main process (Node) ───────────────┐
@@ -86,6 +86,7 @@ The local file was chosen over a database server because this is single-user and
 | Speech-to-text | **Live, on-device** (Whisper `base.en`, free, no key): verified in the dev app with a recorded clip fed through the real recorder, and in the packaged `.app`. OpenAI or ElevenLabs Scribe optional (not run live). |
 | Text-to-speech | **Live**: on-device macOS voice. ElevenLabs optional (awaiting key). |
 | Browser extension + bridge | **Live and tested** (token auth, origin check, schema validation). The page reader was run on real product pages (The Ordinary, CeraVe), and a real CeraVe product went bridge → companion → live Claude analysis. It refuses everything while **Settings › Browser extension › page access** is off. The toolbar click itself needs a person, so test it once by hand. |
+| Circle a product (⌥⇧C) | **Live and tested** in the real app: screen capture → circle overlay → Claude reads the circled pixels → companion verdict. Ingredients are only used if they're legible in the circle (never filled in from memory); circling a product's ingredient list right after its name adds them. Needs macOS **Screen & System Audio Recording** permission for SkinTwin (Electron while developing). |
 | Product catalog / marketplace | **Demo data only**, labelled everywhere: key ingredients only and illustrative prices. "Visit" opens brand homepages. There are no partnerships, offers or in-app checkout. |
 
 ## Test results (this build)

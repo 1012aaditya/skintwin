@@ -32,6 +32,12 @@ const api: SkinTwinApi = {
     menu: (opts) => ipcRenderer.invoke('companion:menu', opts),
     onCommand: on('companion:command')
   },
+  circle: {
+    start: () => ipcRenderer.invoke('circle:start'),
+    image: () => ipcRenderer.invoke('circle:image'),
+    done: (r) => ipcRenderer.invoke('circle:done', r),
+    openSettings: () => ipcRenderer.invoke('circle:openSettings')
+  },
   app: { open: (route) => ipcRenderer.invoke('app:open', route), onNavigate: on('app:navigate') },
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
   shortcuts: { status: () => ipcRenderer.invoke('shortcuts:status'), suspend: (s) => ipcRenderer.invoke('shortcuts:suspend', s) },

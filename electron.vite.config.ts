@@ -27,7 +27,8 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: resolve('src/renderer/index.html'),
-          companion: resolve('src/renderer/companion.html')
+          companion: resolve('src/renderer/companion.html'),
+          circle: resolve('src/renderer/circle.html')
         }
       }
     }

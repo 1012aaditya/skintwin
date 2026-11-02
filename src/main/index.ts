@@ -1,10 +1,11 @@
-import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, screen, session, shell, systemPreferences, Tray } from 'electron'
+import { app, BrowserWindow, desktopCapturer, dialog, globalShortcut, ipcMain, Menu, nativeImage, screen, session, shell, systemPreferences, Tray, type NativeImage } from 'electron'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Server } from 'node:http'
 import type { AskRequest, AskResponse, ProviderStatus, Result } from '@shared/assistant'
+import { lassoBounds, type Point } from '@shared/circle'
 import type { SkinAnalysis } from '@shared/models'
 import { CORNERS, type Corner } from '@shared/models'
 import { MutationError, MutationSchema } from '@shared/mutations'
@@ -12,9 +13,10 @@ import type { BridgeMessage } from '@shared/protocol'
 import { loadConfig } from './config'
 import { createEmptyDatabase, Store } from './db'
 import { startBridge } from './services/bridge'
-import { productFromExtraction } from './services/ingest'
+import { productFromExtraction, productFromScreenRead } from './services/ingest'
 import { AnthropicAssistant, AssistantError, buildContext, RuleBasedAssistant, type AssistantProvider } from './services/llm'
 import { ElevenLabsSpeaker, ElevenLabsTranscriber, LocalWhisperTranscriber, OpenAITranscriber, type SpeechToText, type TextToSpeech } from './services/speech'
+import { ScreenReader } from './services/vision'
 import { MockSkinAnalysis, YouCamError, YouCamProvider, type SkinAnalysisProvider } from './services/youcam'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -31,12 +33,14 @@ const stt: SpeechToText | null =
   : config.sttProvider === 'elevenlabs' ? new ElevenLabsTranscriber(config.elevenLabsKey!)
   : localStt
 const tts: TextToSpeech | null = config.ttsProvider === 'elevenlabs' ? new ElevenLabsSpeaker(config.elevenLabsKey!, config.elevenLabsVoiceId!) : null
+const screenReader = config.anthropicKey ? new ScreenReader(config.anthropicKey, config.llmModel) : null
 const analysisProvider: SkinAnalysisProvider | null = config.youcamKey
   ? new YouCamProvider(config.youcamKey, config.youcamBase)
   : config.enableMocks ? new MockSkinAnalysis() : null
 
 let mainWindow: BrowserWindow | null = null
 let companionWindow: BrowserWindow | null = null
+let circleWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let bridgeServer: Server | null = null
 let bridgeError: string | null = null
@@ -53,12 +57,14 @@ let shortcutStatus: { toggle: boolean; voice: boolean } = { toggle: false, voice
 
 // ---------- Windows ----------
 
-function rendererUrl(page: 'index' | 'companion', hash = '') {
+type Page = 'index' | 'companion' | 'circle'
+
+function rendererUrl(page: Page, hash = '') {
   if (isDev) return `${process.env['ELECTRON_RENDERER_URL']}/${page}.html${hash ? `#${hash}` : ''}`
   return null
 }
 
-function loadPage(win: BrowserWindow, page: 'index' | 'companion', hash = '') {
+function loadPage(win: BrowserWindow, page: Page, hash = '') {
   const url = rendererUrl(page, hash)
   if (url) void win.loadURL(url)
   else void win.loadFile(join(here, `../renderer/${page}.html`), { hash })
@@ -199,6 +205,9 @@ type CompanionCommand =
   | { type: 'analyze-product'; productId: string }
   | { type: 'compare-product'; productId: string }
   | { type: 'detection-failed'; reason: string }
+  | { type: 'circle-reading'; requestId: string }
+  | { type: 'circle-result'; requestId: string; productId: string }
+  | { type: 'circle-failed'; requestId: string | null; kind: 'screen_denied' | 'screen_unreadable' | 'provider'; message: string }
 
 function broadcast(channel: string, payload: unknown) {
   for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(channel, payload)
@@ -227,6 +236,113 @@ async function handleBridgeMessage(msg: BridgeMessage): Promise<{ productId?: st
   else if (msg.type === 'comparison_requested') showCompanion({ type: 'compare-product', productId: product.id })
   else showCompanion({ type: 'product-detected', productId: product.id })
   return { productId: product.id }
+}
+
+// ---------- Circle a product ----------
+
+const CIRCLE_SHORTCUT = 'Alt+Shift+C'
+const SCREEN_SETTINGS_URL = 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture'
+let circleShot: NativeImage | null = null
+let companionBeforeCircle = false
+
+const circleFailed = (kind: 'screen_denied' | 'screen_unreadable' | 'provider', message: string, requestId: string | null = null) =>
+  showCompanion({ type: 'circle-failed', requestId, kind, message }, true)
+
+/** Freeze the screen under the cursor and let the user draw around a product on it. */
+async function startCircle() {
+  if (circleWindow) return
+  if (!screenReader) return circleFailed('provider', 'Circling a product needs Claude. Add ANTHROPIC_API_KEY to your .env file.')
+  const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
+  companionBeforeCircle = !!companionWindow?.isVisible()
+  companionWindow?.hide() // keep the orb out of the picture
+  await new Promise((r) => setTimeout(r, 150))
+  let shot: NativeImage | null = null
+  try {
+    const { width, height } = display.size
+    const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: Math.round(width * display.scaleFactor), height: Math.round(height * display.scaleFactor) } })
+    shot = (sources.find((s) => s.display_id === String(display.id)) ?? sources[0])?.thumbnail ?? null
+  } catch (err) {
+    console.warn('[circle] capture failed:', (err as Error).message)
+  }
+  // Without permission macOS returns just the wallpaper, so check rather than trust the image.
+  if (process.platform === 'darwin' && systemPreferences.getMediaAccessStatus('screen') !== 'granted')
+    return circleFailed('screen_denied', 'SkinTwin needs Screen Recording permission to see what you circle.')
+  if (!shot || shot.isEmpty()) return circleFailed('screen_unreadable', 'I couldn’t capture your screen. Try again.')
+
+  circleShot = shot
+  circleWindow = new BrowserWindow({
+    ...display.bounds,
+    frame: false,
+    resizable: false,
+    movable: false,
+    hasShadow: false,
+    skipTaskbar: true,
+    fullscreenable: false,
+    enableLargerThanScreen: true,
+    show: false,
+    title: 'Circle a product',
+    // Like the companion: a panel can sit over another app's full-screen space.
+    ...(process.platform === 'darwin' ? { type: 'panel' } : {}),
+    backgroundColor: '#000000',
+    webPreferences: webPreferences()
+  })
+  if (process.platform === 'darwin') circleWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true })
+  circleWindow.setAlwaysOnTop(true, 'screen-saver')
+  hardenWindow(circleWindow)
+  circleWindow.once('ready-to-show', () => {
+    circleWindow?.setBounds(display.bounds)
+    circleWindow?.show()
+    circleWindow?.focus()
+  })
+  circleWindow.on('closed', () => {
+    circleWindow = null
+    circleShot = null
+  })
+  loadPage(circleWindow, 'circle')
+}
+
+function endCircle(): NativeImage | null {
+  const shot = circleShot
+  circleWindow?.close()
+  return shot
+}
+
+async function readCircle(jpeg: Buffer) {
+  const requestId = `circle:${randomUUID()}`
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), 60_000)
+  inflight.set(requestId, ctrl)
+  showCompanion({ type: 'circle-reading', requestId }, true)
+  try {
+    const read = await screenReader!.read(jpeg, ctrl.signal)
+    const now = new Date().toISOString()
+    const db = store.get()
+    const recent = db.detected?.method === 'screen' ? (db.products.find((p) => p.id === db.detected!.productId) ?? null) : null
+    const product = productFromScreenRead(read, now, recent)
+    if (!product) return circleFailed('screen_unreadable', read.note || 'I couldn’t spot a single skincare product there.', requestId)
+    store.update((d) => {
+      const idx = d.products.findIndex((p) => p.id === product.id)
+      const old = idx >= 0 ? d.products[idx]! : null
+      // A later, blurrier circle of the same product mustn't wipe ingredients read earlier.
+      const merged = old ? { ...product, ingredients: product.ingredients.length ? product.ingredients : old.ingredients, createdAt: old.createdAt } : product
+      if (old) d.products[idx] = merged
+      else d.products.push(merged)
+      d.detected = { productId: product.id, tabUrl: '', retailer: null, detectedAt: now, method: 'screen' }
+      d.lastDetectionFailure = null
+    })
+    console.info(`[circle] read (${read.confidence} confidence, ${product.ingredients.length} ingredients)`)
+    showCompanion({ type: 'circle-result', requestId, productId: product.id })
+  } catch (err) {
+    const status = (err as { status?: number }).status
+    console.warn(`[circle] failed: ${status ?? (err as Error).name}`)
+    if (ctrl.signal.aborted) circleFailed('provider', 'Reading the circled area took too long. Try a smaller circle.', requestId)
+    else if (err instanceof AssistantError) circleFailed('provider', err.message, requestId)
+    else if (status === 401) circleFailed('provider', 'The Anthropic API key was rejected. Check ANTHROPIC_API_KEY.', requestId)
+    else circleFailed('provider', 'Couldn’t reach Claude. Check your connection and try again.', requestId)
+  } finally {
+    clearTimeout(timer)
+    inflight.delete(requestId)
+  }
 }
 
 // ---------- IPC ----------
@@ -367,6 +483,29 @@ function registerIpc() {
     }
   })
 
+  ipcMain.handle('circle:start', () => void startCircle())
+  ipcMain.handle('circle:image', (e) => (circleShot && e.sender === circleWindow?.webContents ? `data:image/jpeg;base64,${circleShot.toJPEG(90).toString('base64')}` : null))
+  ipcMain.handle('circle:done', (e, raw: { points: Point[]; width: number; height: number } | null) => {
+    if (!circleWindow || e.sender !== circleWindow.webContents) return
+    const shot = endCircle()
+    const valid = raw && Array.isArray(raw.points) && raw.width > 0 && raw.height > 0
+    const box = valid ? lassoBounds(raw.points.slice(0, 5000), raw.width, raw.height) : null
+    if (!shot || !box) {
+      if (companionBeforeCircle) companionWindow?.showInactive()
+      return
+    }
+    const size = shot.getSize()
+    const sx = size.width / raw!.width
+    const sy = size.height / raw!.height
+    let crop = shot.crop({ x: Math.round(box.x * sx), y: Math.round(box.y * sy), width: Math.max(1, Math.round(box.w * sx)), height: Math.max(1, Math.round(box.h * sy)) })
+    const { width, height } = crop.getSize()
+    const scale = 1568 / Math.max(width, height) // Claude's vision sweet spot
+    if (scale < 1) crop = crop.resize({ width: Math.round(width * scale), height: Math.round(height * scale), quality: 'best' })
+    void readCircle(crop.toJPEG(88))
+  })
+  ipcMain.handle('circle:openSettings', () => {
+    if (process.platform === 'darwin') void shell.openExternal(SCREEN_SETTINGS_URL)
+  })
   ipcMain.handle('companion:show', (_e, command?: CompanionCommand) => showCompanion(command))
   ipcMain.handle('companion:hide', () => companionWindow?.hide())
   // The window is transparent, so resizing it instantly is invisible; the renderer animates the content.
@@ -400,6 +539,7 @@ function registerIpc() {
     Menu.buildFromTemplate([
       { label: 'Talk to SkinTwin', accelerator: c.voiceShortcut || undefined, registerAccelerator: false, click: cmd({ type: 'listen' }) },
       { label: 'Type a question', click: cmd({ type: 'menu', action: 'type' }) },
+      { label: 'Circle a product on screen', accelerator: CIRCLE_SHORTCUT, registerAccelerator: false, click: () => void startCircle() },
       ...(opts?.hasProduct ? [{ label: 'Quick actions for this product', click: cmd({ type: 'menu', action: 'quick-actions' }) }] : []),
       { label: 'My skin profile', click: cmd({ type: 'menu', action: 'profile' }) },
       { type: 'separator' },
@@ -492,6 +632,7 @@ function registerShortcuts() {
     }),
     voice: tryRegister(voiceShortcut, () => showCompanion({ type: 'listen' }, true))
   }
+  if (!tryRegister(CIRCLE_SHORTCUT, () => void startCircle())) console.warn(`[shortcut] ${CIRCLE_SHORTCUT} is unavailable (taken by another app or invalid)`)
   if (!shortcutStatus.toggle) console.warn(`[shortcut] ${shortcut} is unavailable (taken by another app or invalid)`)
   if (!shortcutStatus.voice) console.warn(`[shortcut] ${voiceShortcut} is unavailable (taken by another app or invalid)`)
 }
@@ -510,6 +651,7 @@ function setAppMenu() {
         submenu: [
           { label: 'Show / hide companion', accelerator: shortcut || undefined, registerAccelerator: false, click: () => (companionWindow?.isVisible() ? companionWindow.hide() : showCompanion(undefined, true)) },
           { label: 'Talk to SkinTwin', accelerator: voiceShortcut || undefined, registerAccelerator: false, click: () => showCompanion({ type: 'listen' }, true) },
+          { label: 'Circle a product on screen', accelerator: CIRCLE_SHORTCUT, registerAccelerator: false, click: () => void startCircle() },
           { type: 'separator' },
           { label: 'Change shortcuts…', click: () => createMainWindow('/settings') }
         ]
@@ -533,6 +675,7 @@ function createTray() {
     Menu.buildFromTemplate([
       { label: 'Show companion', click: () => showCompanion() },
       { label: 'Talk to SkinTwin', click: () => showCompanion({ type: 'listen' }, true) },
+      { label: 'Circle a product on screen', click: () => void startCircle() },
       { label: 'Open SkinTwin', click: () => createMainWindow() },
       { type: 'separator' },
       { label: 'Quit', click: () => app.quit() }

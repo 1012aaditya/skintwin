@@ -126,7 +126,7 @@ export const SkinAnalysisSchema = z.object({
 export type SkinAnalysis = z.infer<typeof SkinAnalysisSchema>
 
 export const ProvenanceSchema = z.object({
-  kind: z.enum(['demo_catalog', 'browser', 'manual', 'partner']),
+  kind: z.enum(['demo_catalog', 'browser', 'screen', 'manual', 'partner']),
   label: z.string(),
   url: z.string().nullable(),
   fetchedAt: z.string(),

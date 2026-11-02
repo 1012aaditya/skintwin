@@ -46,10 +46,10 @@ export function Companion() {
   const speaker = useSpeaker({ enabled: !!voice?.responseEnabled && !voice?.textOnly, voiceName: voice?.voiceName ?? null, rate: voice?.rate ?? 1, useCloud: providers?.tts.provider === 'elevenlabs' })
 
   // ----- ask the assistant -----
-  const ask = useCallback(async (requestId: string, question: string) => {
+  const ask = useCallback(async (requestId: string, question: string, productId?: string) => {
     const started = Date.now()
     const c = ctxRef.current
-    const res = await window.skintwin.assistant.ask({ requestId, text: question, productId: c.productId, conversationId: c.conversationId })
+    const res = await window.skintwin.assistant.ask({ requestId, text: question, productId: productId ?? c.productId, conversationId: c.conversationId })
     const wait = MIN_THINKING_MS - (Date.now() - started)
     if (wait > 0) await new Promise((r) => setTimeout(r, wait))
     if (res.ok) dispatch({ type: 'ANSWERED', requestId, response: res.data })
@@ -180,6 +180,16 @@ export function Companion() {
             dispatch({ type: 'SUBMIT_TEXT', requestId, text: DEFAULT_PRODUCT_QUESTION })
             void ask(requestId, DEFAULT_PRODUCT_QUESTION)
           }
+        } else if (cmd.type === 'circle-reading') dispatch({ type: 'READING_SCREEN', requestId: cmd.requestId })
+        else if (cmd.type === 'circle-result') {
+          if (ctxRef.current.requestId !== cmd.requestId) return // cancelled while reading
+          const nextRequestId = newRequestId()
+          dispatch({ type: 'SCREEN_READ', requestId: cmd.requestId, productId: cmd.productId, nextRequestId, question: DEFAULT_PRODUCT_QUESTION })
+          void ask(nextRequestId, DEFAULT_PRODUCT_QUESTION, cmd.productId)
+        } else if (cmd.type === 'circle-failed') {
+          const error = { kind: cmd.kind, message: cmd.message }
+          if (cmd.kind === 'screen_denied') dispatch({ type: 'PERMISSION_REQUIRED', error })
+          else dispatch({ type: 'FAILED', requestId: cmd.requestId, error })
         } else if (cmd.type === 'detection-failed') dispatch({ type: 'FAILED', requestId: null, error: { kind: 'page_unreadable', message: cmd.reason } })
       }),
     [listen, ask, finishListening]
@@ -250,7 +260,7 @@ export function Companion() {
                 )}
                 {ctx.state === 'processing' && (
                   <motion.div key="think" data-solid className="w-full max-w-[300px]" initial={{ opacity: 0, y: bottom ? 10 : -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-                    <p className={cn('mb-2 px-1 text-[15px] font-semibold [text-shadow:0_1px_8px_rgb(40_20_100/0.6)]', right ? 'text-right' : 'text-left')}>{ctx.stage === 'transcribing' ? 'Catching that…' : 'Analyzing for you…'}</p>
+                    <p className={cn('mb-2 px-1 text-[15px] font-semibold [text-shadow:0_1px_8px_rgb(40_20_100/0.6)]', right ? 'text-right' : 'text-left')}>{ctx.stage === 'transcribing' ? 'Catching that…' : ctx.stage === 'reading' ? 'Looking at what you circled…' : 'Analyzing for you…'}</p>
                     <ProcessingSteps ctx={ctx} hasProduct={!!ctx.productId} />
                     <div className={cn('mt-2 flex', right ? 'justify-end' : 'justify-start')}>
                       <Hint k="Esc" t="cancel" onClick={cancel} />
@@ -308,7 +318,7 @@ export function Companion() {
                     {ctx.state === 'processing' && (
                       <div className="flex flex-col items-center pt-8">
                         <Orb size={120} mood="thinking" />
-                        <p className="mt-6 mb-4 text-[17px] font-semibold">{ctx.stage === 'transcribing' ? 'Catching that…' : 'Analyzing for you…'}</p>
+                        <p className="mt-6 mb-4 text-[17px] font-semibold">{ctx.stage === 'transcribing' ? 'Catching that…' : ctx.stage === 'reading' ? 'Looking at what you circled…' : 'Analyzing for you…'}</p>
                         <ProcessingSteps ctx={ctx} hasProduct={!!ctx.productId} inPanel />
                         <div className="mt-4"><Hint k="Esc" t="to cancel" onClick={cancel} /></div>
                       </div>
