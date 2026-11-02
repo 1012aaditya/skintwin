@@ -7,7 +7,7 @@ const answer = (requestId: string): AskResponse => ({
   conversationId: 'conv:1',
   provider: 'rules',
   providerNote: null,
-  reply: { answer: 'Yes', verdict: 'good_match', highlights: [], suggestedActions: [], referencedProductIds: [] }
+  reply: { summary: 'Yes.', answer: 'Yes', verdict: 'good_match', highlights: [], suggestedActions: [], referencedProductIds: [] }
 })
 
 describe('companion state machine', () => {

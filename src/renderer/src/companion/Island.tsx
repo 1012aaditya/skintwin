@@ -1,9 +1,11 @@
-import { Keyboard, Loader2, Mic, ScanSearch, Square, X } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, ChevronDown, CircleAlert, Keyboard, Loader2, MessageCircle, Mic, ScanSearch, Square, X } from 'lucide-react'
+import type { AssistantReply } from '@shared/assistant'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Orb, type OrbMood } from '@renderer/components/Orb'
 import { cn } from '@renderer/lib/cn'
 import type { CompanionContext } from './machine'
+import { VERDICTS } from './views'
 
 /**
  * The companion as a Dynamic-Island-style pill at the top centre of the screen. On a notched
@@ -19,7 +21,14 @@ export interface IslandInfo {
 }
 export const NO_NOTCH: IslandInfo = { notch: false, barHeight: 0, notchWidth: 0 }
 
-type Shape = 'idle' | 'hover' | 'listening' | 'processing'
+type Shape = 'idle' | 'hover' | 'listening' | 'processing' | 'result'
+
+/** A fresh answer shown in the pill: the verdict and one line, with the full answer a tap away. */
+export interface IslandResult {
+  verdict: AssistantReply['verdict']
+  summary: string
+  aboutProduct: boolean
+}
 
 /** Height of the row level with the notch (or the pill's own height without one). */
 export const topRow = (info: IslandInfo) => (info.notch ? info.barHeight : 34)
@@ -31,6 +40,7 @@ export function islandSize(info: IslandInfo, shape: Shape) {
   if (shape === 'idle') return { width: info.notch ? info.notchWidth + 104 : 200, height: top }
   if (shape === 'hover') return { width: 360, height: top + 54 }
   if (shape === 'listening') return { width: 380, height: top + 58 }
+  if (shape === 'result') return { width: 420, height: top + 78 }
   return { width: 400, height: top + 64 }
 }
 
@@ -45,6 +55,8 @@ export const panelClip = (info: IslandInfo) => `inset(${topGap(info)}px 0px 0px 
 
 const STAGE_PROGRESS = { transcribing: 0.3, reading: 0.25, researching: 0.55, thinking: 0.85 } as const
 const SPRING = { type: 'spring', stiffness: 420, damping: 36 } as const
+const RESULT_TIMEOUT_MS = 30_000
+const TONE_TEXT = { good: 'text-mint-300', mixed: 'text-amber-200', bad: 'text-rose-300', unknown: 'text-white/70' } as const
 
 export function IslandBar({
   info,
@@ -58,7 +70,10 @@ export function IslandBar({
   onCircle,
   onSend,
   onCancel,
-  onMenu
+  onMenu,
+  result,
+  onDetails,
+  onDismiss
 }: {
   info: IslandInfo
   ctx: CompanionContext
@@ -72,11 +87,20 @@ export function IslandBar({
   onSend: () => void
   onCancel: () => void
   onMenu: () => void
+  result: IslandResult | null
+  onDetails: () => void
+  onDismiss: () => void
 }) {
   const [hover, setHover] = useState(false)
   const leaveTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   useEffect(() => () => clearTimeout(leaveTimer.current), [])
-  const shape: Shape = ctx.state === 'listening' ? 'listening' : ctx.state === 'processing' ? 'processing' : hover ? 'hover' : 'idle'
+  // A result tucks itself away after a while, unless the pointer is resting on it.
+  useEffect(() => {
+    if (!result || hover) return
+    const t = setTimeout(onDismiss, RESULT_TIMEOUT_MS)
+    return () => clearTimeout(t)
+  }, [result, hover, onDismiss])
+  const shape: Shape = ctx.state === 'listening' ? 'listening' : ctx.state === 'processing' ? 'processing' : result ? 'result' : hover ? 'hover' : 'idle'
   const { width, height } = islandSize(info, shape)
   const top = topRow(info)
 
@@ -103,9 +127,9 @@ export function IslandBar({
       }}
     >
       {/* Level with the notch: only the two "ears" carry content; the middle stays empty. */}
-      <button aria-label="Open SkinTwin" onClick={onOpen} className="absolute inset-x-0 top-0 flex items-center justify-between px-3.5 outline-none" style={{ height: top }}>
+      <button aria-label="Open SkinTwin" onClick={result ? onDetails : onOpen} className="absolute inset-x-0 top-0 flex items-center justify-between px-3.5 outline-none" style={{ height: top }}>
         <Orb size={18} mood={mood} level={level} />
-        <Ear ctx={ctx} />
+        <Ear ctx={ctx} result={result} />
       </button>
 
       <AnimatePresence initial={false} mode="popLayout">
@@ -140,6 +164,7 @@ export function IslandBar({
                 </Round>
               </>
             )}
+            {shape === 'result' && result && <ResultRow result={result} onDetails={onDetails} onDismiss={onDismiss} />}
             {shape === 'processing' && (
               <div className="flex min-w-0 flex-1 flex-col gap-2">
                 <div className="flex items-center gap-2.5">
@@ -160,8 +185,32 @@ export function IslandBar({
   )
 }
 
+function ResultRow({ result, onDetails, onDismiss }: { result: IslandResult; onDetails: () => void; onDismiss: () => void }) {
+  const v = VERDICTS[result.verdict]
+  const Icon = !result.aboutProduct ? MessageCircle : v.tone === 'good' ? CheckCircle2 : v.tone === 'unknown' ? CircleAlert : AlertTriangle
+  return (
+    <>
+      <Icon className={cn('h-5 w-5 shrink-0', result.aboutProduct ? TONE_TEXT[v.tone] : 'text-lilac-200')} />
+      <div className="min-w-0 flex-1">
+        {result.aboutProduct && <p className={cn('text-[14px] font-semibold', TONE_TEXT[v.tone])}>{v.title.replace(' — read the notes', '')}</p>}
+        <p className={cn('line-clamp-2 leading-snug', result.aboutProduct ? 'text-[12.5px] text-white/80' : 'text-[13.5px] text-white')}>{result.summary}</p>
+      </div>
+      <button onClick={onDetails} className="flex h-8 shrink-0 items-center gap-1 rounded-full bg-white/12 px-3 text-[12.5px] font-medium transition-colors hover:bg-white/20">
+        Details <ChevronDown className="h-3.5 w-3.5" />
+      </button>
+      <Round label="Dismiss" onClick={onDismiss}>
+        <X />
+      </Round>
+    </>
+  )
+}
+
 /** Right-hand ear: what the companion is doing, at a glance. */
-function Ear({ ctx }: { ctx: CompanionContext }) {
+function Ear({ ctx, result }: { ctx: CompanionContext; result: IslandResult | null }) {
+  if (result && result.aboutProduct) {
+    const tone = VERDICTS[result.verdict].tone
+    return <span className={cn('h-2 w-2 rounded-full', tone === 'good' ? 'bg-mint-300' : tone === 'bad' ? 'bg-rose-300' : tone === 'mixed' ? 'bg-amber-200' : 'bg-white/60')} />
+  }
   if (ctx.state === 'listening') return <span className="h-2 w-2 rounded-full bg-rose-400" />
   if (ctx.state === 'processing') return <Loader2 className="h-4 w-4 animate-spin text-lilac-200" />
   if (ctx.productId) return <span className="h-2 w-2 rounded-full bg-lilac-300 shadow-[0_0_8px_#a98bff]" title="A product is ready to check" />

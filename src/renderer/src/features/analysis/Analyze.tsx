@@ -1,7 +1,7 @@
 import { AlertTriangle, BarChart3, Camera, Check, Clock, Crop, Droplets, Grid3x3, ImageUp, Info, RefreshCcw, ScanFace, Sparkles, Sun, Waves, X } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { label, SKIN_TYPES, type AnalysisMetric, type Concern, type SkinAnalysis, type SkinType } from '@shared/models'
+import { label, SKIN_TYPES, type AnalysisMask, type AnalysisMetric, type Concern, type SkinAnalysis, type SkinType } from '@shared/models'
 import { Badge, Button, Card, ErrorState, ProgressRing, SectionTitle, Spinner } from '@renderer/components/ui'
 import { cn } from '@renderer/lib/cn'
 import { formatDate } from '@renderer/lib/format'
@@ -10,6 +10,7 @@ import { navigate } from '@renderer/lib/router'
 import { mutate, newRequestId, useDb, useProviders } from '@renderer/lib/store'
 import { toast } from '@renderer/lib/toast'
 import { allOk, firstIssue } from './facecheck'
+import { Heatmap } from './Heatmap'
 import { CAPTURE_ASPECT, checkStill, MIN_CAPTURE_SHORT_SIDE, useFaceGuide, type StillCheck } from './useFaceGuide'
 
 type Phase =
@@ -64,6 +65,9 @@ export function Analyze() {
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' })
   const latest = db.analyses[0] ?? null
   const [shown, setShown] = useState<SkinAnalysis | null>(latest)
+  // The analysed photo and YouCam's masks, kept in memory for this screen only.
+  const [fresh, setFresh] = useState<{ id: string; photo: string; masks: AnalysisMask[] } | null>(null)
+  useEffect(() => () => void (fresh && URL.revokeObjectURL(fresh.photo)), [fresh])
   const videoRef = useRef<HTMLVideoElement>(null)
   const overlayRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -160,10 +164,12 @@ export function Analyze() {
     setPhase({ kind: 'submitting', url, stage: 'starting', requestId })
     const res = await window.skintwin.analysis.run({ requestId, imageBase64: await blobToBase64(blob), mimeType: blob.type })
     if (res.ok) {
-      setShown(res.data)
+      const { analysis, masks } = res.data
+      setShown(analysis)
       setPhase({ kind: 'idle' })
-      URL.revokeObjectURL(url)
-      toast.success(res.data.isMock ? 'Mock analysis complete (not a real result)' : 'Analysis complete')
+      if (masks.length) setFresh({ id: analysis.id, photo: url, masks })
+      else URL.revokeObjectURL(url)
+      toast.success(analysis.isMock ? 'Mock analysis complete (not a real result)' : 'Analysis complete')
     } else if (res.code === 'cancelled') setPhase({ kind: 'idle' })
     else setPhase({ kind: 'error', url, message: res.error, code: res.code })
   }
@@ -321,7 +327,7 @@ export function Analyze() {
         <p className="text-center text-xs text-ink-faint">Your photo is sent to YouCam only when you press Analyze, and is never saved by SkinTwin. Face checks run on this computer.</p>
       </div>
 
-      {shown ? <AnalysisResult analysis={shown} /> : <NoResultYet />}
+      {shown ? <AnalysisResult analysis={shown} heatmap={fresh?.id === shown.id ? fresh : null} /> : <NoResultYet />}
     </div>
   )
 }
@@ -369,7 +375,7 @@ export function MetricTile({ m }: { m: AnalysisMetric }) {
   )
 }
 
-export function AnalysisResult({ analysis }: { analysis: SkinAnalysis }) {
+export function AnalysisResult({ analysis, heatmap }: { analysis: SkinAnalysis; heatmap?: { photo: string; masks: AnalysisMask[] } | null }) {
   const db = useDb()
   const summary = summaryScore(analysis)
   const scored = analysis.metrics.filter((m) => m.score != null).sort((a, b) => b.score! - a.score!)
@@ -419,6 +425,8 @@ export function AnalysisResult({ analysis }: { analysis: SkinAnalysis }) {
           <MetricTile key={m.key} m={m} />
         ))}
       </div>
+
+      {heatmap && <Heatmap photo={heatmap.photo} masks={heatmap.masks} metrics={analysis.metrics} />}
 
       {focus.length > 0 && (
         <div className="glass-inset rounded-[20px] p-5">

@@ -127,17 +127,33 @@ export function Companion() {
   useEffect(() => {
     if (ctx.state === 'responding' && ctx.response && spokenFor.current !== ctx.response.requestId) {
       spokenFor.current = ctx.response.requestId
-      void speaker.speak(ctx.response.reply.answer)
+      // Spoken: just the bottom line. The full answer is on screen under Details.
+      void speaker.speak(ctx.response.reply.summary || ctx.response.reply.answer)
     }
   }, [ctx.state, ctx.response, speaker])
+
+  const island = snap?.settings.companion.style === 'island'
+  // Island: a fresh answer stays in the pill as a one-line verdict; the panel opens only on
+  // Details — unless the question was asked from the open panel, then it answers there.
+  const [details, setDetails] = useState(false)
+  const [answerInPanel, setAnswerInPanel] = useState(false)
+  const compactAnswer = island && ctx.state === 'responding' && !details && !answerInPanel
+  const showDetails = useCallback(() => setDetails(true), [])
+  // Stable, so the island's auto-dismiss timer isn't restarted on every render.
+  const stopSpeaking = useRef(speaker.stop)
+  stopSpeaking.current = speaker.stop
+  const dismissResult = useCallback(() => {
+    stopSpeaking.current()
+    dispatch({ type: 'RESET' })
+  }, [])
 
   // Once the panel is open it stays open while listening/thinking, so the window doesn't jump.
   const [panel, setPanel] = useState(false)
   useEffect(() => {
-    if (isExpanded(ctx.state) || typing) setPanel(true)
+    if ((isExpanded(ctx.state) && !compactAnswer) || typing) setPanel(true)
     else if (ctx.state === 'idle') setPanel(false)
-  }, [ctx.state, typing])
-  const expanded = isExpanded(ctx.state) || typing || (panel && (ctx.state === 'listening' || ctx.state === 'processing'))
+  }, [ctx.state, typing, compactAnswer])
+  const expanded = (isExpanded(ctx.state) && !compactAnswer) || typing || (panel && (ctx.state === 'listening' || ctx.state === 'processing'))
 
   // Window size follows state. The window is transparent, so it resizes instantly and the
   // content does the animating: growing → enlarge the window first, then bloom the panel out
@@ -159,8 +175,14 @@ export function Companion() {
   }, [target]) // eslint-disable-line react-hooks/exhaustive-deps
   const showPanel = shown === 'expanded'
   useClickThrough(!expanded)
+  const shownRef = useRef(shown)
+  shownRef.current = shown
+  useEffect(() => {
+    if (ctx.state !== 'processing') return
+    setAnswerInPanel(shownRef.current === 'expanded')
+    setDetails(false)
+  }, [ctx.state])
 
-  const island = snap?.settings.companion.style === 'island'
   const [islandInfo, setIslandInfo] = useState<IslandInfo>(NO_NOTCH)
   useEffect(() => {
     if (island) void window.skintwin.companion.islandInfo().then(setIslandInfo)
@@ -186,7 +208,7 @@ export function Companion() {
           if (ctxRef.current.state !== 'processing' && ctxRef.current.state !== 'listening') {
             const requestId = newRequestId()
             dispatch({ type: 'SUBMIT_TEXT', requestId, text: DEFAULT_PRODUCT_QUESTION })
-            void ask(requestId, DEFAULT_PRODUCT_QUESTION)
+            void ask(requestId, DEFAULT_PRODUCT_QUESTION, cmd.productId) // ctxRef hasn't seen PRODUCT_DETECTED yet
           }
         } else if (cmd.type === 'circle-reading') dispatch({ type: 'READING_SCREEN', requestId: cmd.requestId })
         else if (cmd.type === 'circle-progress') dispatch({ type: 'RESEARCHING', requestId: cmd.requestId })
@@ -259,6 +281,9 @@ export function Companion() {
                 onSend={() => void finishListening()}
                 onCancel={cancel}
                 onMenu={() => void window.skintwin.companion.menu({ hasProduct: !!ctx.productId })}
+                result={compactAnswer && ctx.response ? { verdict: ctx.response.reply.verdict, summary: ctx.response.reply.summary || ctx.response.reply.answer, aboutProduct: !!ctx.productId } : null}
+                onDetails={showDetails}
+                onDismiss={dismissResult}
               />
             </motion.div>
           ) : !showPanel ? (

@@ -1,5 +1,5 @@
 import type { AskRequest, AskResponse, ProviderStatus, Result } from '../shared/assistant'
-import type { SkinAnalysis, Snapshot } from '../shared/models'
+import type { AnalysisRun, Snapshot } from '../shared/models'
 import type { Mutation } from '../shared/mutations'
 
 export type CompanionCommand =
@@ -25,7 +25,7 @@ export interface SkinTwinApi {
   }
   providers: { status(): Promise<ProviderStatus> }
   analysis: {
-    run(req: { requestId: string; imageBase64: string; mimeType: string }): Promise<Result<SkinAnalysis>>
+    run(req: { requestId: string; imageBase64: string; mimeType: string }): Promise<Result<AnalysisRun>>
     onProgress(fn: (p: { requestId: string; stage: string }) => void): () => void
   }
   assistant: { ask(req: AskRequest): Promise<Result<AskResponse>> }

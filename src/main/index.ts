@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 import type { Server } from 'node:http'
 import type { AskRequest, AskResponse, ProviderStatus, Result } from '@shared/assistant'
 import { lassoBounds, type Point } from '@shared/circle'
-import type { SkinAnalysis } from '@shared/models'
+import type { AnalysisMask, AnalysisRun } from '@shared/models'
 import { splitIngredientText } from '@shared/ingredients'
 import { CORNERS, type Corner } from '@shared/models'
 import { MutationError, MutationSchema } from '@shared/mutations'
@@ -19,7 +19,7 @@ import { AnthropicAssistant, AssistantError, buildContext, RuleBasedAssistant, t
 import { ElevenLabsSpeaker, ElevenLabsTranscriber, LocalWhisperTranscriber, OpenAITranscriber, type SpeechToText, type TextToSpeech } from './services/speech'
 import { ProductResearcher } from './services/research'
 import { ScreenReader } from './services/vision'
-import { MockSkinAnalysis, YouCamError, YouCamProvider, type SkinAnalysisProvider } from './services/youcam'
+import { MockSkinAnalysis, YouCamError, YouCamProvider, type MaskLink, type SkinAnalysisProvider } from './services/youcam'
 
 const here = dirname(fileURLToPath(import.meta.url))
 // Lets automated tests run against a throwaway data folder instead of the real one.
@@ -420,6 +420,67 @@ async function readCircle(jpeg: Buffer) {
   }
 }
 
+// ---------- Skin analysis masks ----------
+
+const MAX_MASK_BYTES = 6 * 1024 * 1024
+
+/**
+ * Fetch YouCam's mask images (signed, short-lived links) and hand them to the result screen
+ * as data URLs. They're held in memory only — never written to disk or the database.
+ * Logs shape facts only (size, transparency), never the links or the pixels.
+ */
+async function downloadMasks(links: MaskLink[], signal: AbortSignal): Promise<AnalysisMask[]> {
+  const out: AnalysisMask[] = []
+  const skipped = new Map<string, number>()
+  const skip = (why: string) => skipped.set(why, (skipped.get(why) ?? 0) + 1)
+  let described = false
+  for (const link of links) {
+    const images: string[] = []
+    for (const url of link.urls) {
+      const res = await fetch(url, { signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]) }).catch((err: Error) => (skip(err.name), null))
+      if (!res) continue
+      if (!res.ok) {
+        skip(`http_${res.status}`)
+        continue
+      }
+      // Storage often labels files as generic binary, so decode rather than trust the label.
+      const type = res.headers.get('content-type') ?? 'none'
+      const buf = Buffer.from(await res.arrayBuffer())
+      if (buf.length > MAX_MASK_BYTES) {
+        skip('too_large')
+        continue
+      }
+      const img = nativeImage.createFromBuffer(buf)
+      if (img.isEmpty()) {
+        skip(`not_an_image(${type})`)
+        continue
+      }
+      if (!described) {
+        described = true
+        console.info(`[analysis] mask format: ${maskFacts(img, type)}`)
+      }
+      images.push(`data:image/png;base64,${img.toPNG().toString('base64')}`)
+    }
+    if (images.length) out.push({ key: link.key, label: link.label, images })
+  }
+  console.info(`[analysis] masks ready for ${out.length}/${links.length}${skipped.size ? `; skipped: ${[...skipped].map(([k, n]) => `${k}×${n}`).join(', ')}` : ''}`)
+  return out
+}
+
+/** Size and transparency of a mask image, for checking the format without logging pixels. */
+function maskFacts(img: NativeImage, type: string): string {
+  const { width, height } = img.getSize()
+  const px = img.toBitmap() // BGRA
+  let transparent = 0
+  let bright = 0
+  const n = px.length / 4
+  for (let i = 0; i < px.length; i += 4) {
+    if (px[i + 3]! < 250) transparent++
+    if (px[i]! + px[i + 1]! + px[i + 2]! > 600) bright++
+  }
+  return `${type} ${width}×${height}, ${Math.round((transparent / n) * 100)}% transparent, ${Math.round((bright / n) * 100)}% bright`
+}
+
 // ---------- IPC ----------
 
 const ok = <T>(data: T): Result<T> => ({ ok: true, data })
@@ -447,7 +508,7 @@ function registerIpc() {
     demoCatalog: config.demoCatalog
   }))
 
-  ipcMain.handle('analysis:run', async (e, req: { requestId: string; imageBase64: string; mimeType: string }): Promise<Result<SkinAnalysis>> => {
+  ipcMain.handle('analysis:run', async (e, req: { requestId: string; imageBase64: string; mimeType: string }): Promise<Result<AnalysisRun>> => {
     if (!analysisProvider) return fail('Skin analysis isn’t configured. Add YOUCAM_API_KEY to your .env file.', 'not_configured')
     if (typeof req?.imageBase64 !== 'string' || !/^image\/(jpeg|png)$/.test(req.mimeType)) return fail('Use a JPG or PNG image.', 'invalid_type')
     if (inflight.has(req.requestId)) return fail('Analysis already running.', 'duplicate')
@@ -455,12 +516,16 @@ function registerIpc() {
     inflight.set(req.requestId, ctrl)
     try {
       const image = Buffer.from(req.imageBase64, 'base64')
-      const result = await analysisProvider.analyze(image, req.mimeType, ctrl.signal, (stage) =>
+      const { analysis: result, masks: links } = await analysisProvider.analyze(image, req.mimeType, ctrl.signal, (stage) =>
         e.sender.send('analysis:progress', { requestId: req.requestId, stage })
       )
       if (store.get().settings.privacy.storeAnalysisHistory) store.update((db) => db.analyses.unshift(result))
-      console.info(`[analysis] ${analysisProvider.name} ok: ${result.metrics.length} metrics`)
-      return ok(result)
+      console.info(`[analysis] ${analysisProvider.name} ok: ${result.metrics.length} metrics, masks for ${links.length}`)
+      const masks = await downloadMasks(links, ctrl.signal).catch((err) => {
+        console.warn(`[analysis] masks unavailable: ${(err as Error).message}`)
+        return []
+      })
+      return ok({ analysis: result, masks })
     } catch (err) {
       // Codes and messages only — never the image.
       console.warn(`[analysis] failed: ${err instanceof YouCamError ? err.code : (err as Error).name} — ${(err as Error).message}`)

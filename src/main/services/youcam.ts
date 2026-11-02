@@ -74,7 +74,7 @@ export class YouCamError extends Error {
 
 export interface SkinAnalysisProvider {
   readonly name: 'youcam' | 'mock'
-  analyze(image: Buffer, mimeType: string, signal: AbortSignal, onProgress: (stage: AnalysisStage) => void): Promise<SkinAnalysis>
+  analyze(image: Buffer, mimeType: string, signal: AbortSignal, onProgress: (stage: AnalysisStage) => void): Promise<AnalysisOutcome>
 }
 
 export type AnalysisStage = 'uploading' | 'queued' | 'analyzing' | 'finalizing'
@@ -88,6 +88,44 @@ interface OutputEntry {
   value?: unknown
   result?: unknown
   region?: string
+  mask_urls?: unknown
+}
+
+/** Where YouCam found each concern: signed links to mask images, one set per measurement. */
+export interface MaskLink {
+  key: string
+  label: string
+  urls: string[]
+}
+
+/** Mask image links per measurement, from a JSON-format result. Only https links are kept. */
+export function maskLinks(results: unknown): MaskLink[] {
+  const output = (results as { output?: OutputEntry[] } | undefined)?.output
+  if (!Array.isArray(output)) return []
+  const out: MaskLink[] = []
+  for (const e of output) {
+    if (!e || typeof e.type !== 'string' || !Array.isArray(e.mask_urls)) continue
+    const key = e.type.replace(/^hd_/, '')
+    if (!(key in METRIC_LABELS)) continue
+    const urls = e.mask_urls.filter((u): u is string => typeof u === 'string' && u.startsWith('https://')).slice(0, 4)
+    if (urls.length) out.push({ key, label: METRIC_LABELS[key]!, urls })
+  }
+  return out
+}
+
+/** Field names of the first few result entries — safe to log (no values, no links). */
+export function resultShape(results: unknown): string {
+  const output = (results as { output?: OutputEntry[] } | undefined)?.output
+  if (!Array.isArray(output)) return 'no output array'
+  return output
+    .slice(0, 4)
+    .map((e) => `${(e as OutputEntry)?.type}: {${Object.keys(e ?? {}).join(', ')}}`)
+    .join(' | ')
+}
+
+export interface AnalysisOutcome {
+  analysis: SkinAnalysis
+  masks: MaskLink[]
 }
 
 /**
@@ -212,7 +250,8 @@ export class YouCamProvider implements SkinAnalysisProvider {
       )
       if (status.task_status === 'success') {
         onProgress('finalizing')
-        return parseYouCamResult(status.results, task.task_id, new Date().toISOString())
+        console.info(`[analysis] result fields: ${resultShape(status.results)}`)
+        return { analysis: parseYouCamResult(status.results, task.task_id, new Date().toISOString()), masks: maskLinks(status.results) }
       }
       if (status.task_status === 'error') {
         const code = status.error_code ?? status.error ?? 'error_inference'
@@ -240,10 +279,11 @@ export class MockSkinAnalysis implements SkinAnalysisProvider {
     const rand = () => ((seed = (seed * 9301 + 49297) % 233280) / 233280)
     // Only scored concerns; skin_type is a category, not a score.
     const metrics = DEFAULT_SD_ACTIONS.filter((k) => k in METRIC_LABELS).map((k) => ({ key: k, label: METRIC_LABELS[k]!, score: Math.round(60 + rand() * 35), raw: null }))
-    return {
+    // No masks: a mock has nothing to locate on the face.
+    const analysis: SkinAnalysis = {
       id: `analysis:${randomUUID()}`,
       createdAt: new Date().toISOString(),
-      provider: 'mock' as const,
+      provider: 'mock',
       isMock: true,
       overallScore: null,
       skinAge: null,
@@ -251,5 +291,6 @@ export class MockSkinAnalysis implements SkinAnalysisProvider {
       metrics,
       taskId: null
     }
+    return { analysis, masks: [] }
   }
 }

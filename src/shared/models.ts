@@ -125,6 +125,18 @@ export const SkinAnalysisSchema = z.object({
 })
 export type SkinAnalysis = z.infer<typeof SkinAnalysisSchema>
 
+/** Where YouCam found a concern on the analysed photo. Shown once, never saved. */
+export interface AnalysisMask {
+  key: string
+  label: string
+  /** PNG data URLs, in the analysed photo's frame */
+  images: string[]
+}
+export interface AnalysisRun {
+  analysis: SkinAnalysis
+  masks: AnalysisMask[]
+}
+
 export const ProvenanceSchema = z.object({
   kind: z.enum(['demo_catalog', 'browser', 'screen', 'manual', 'partner']),
   label: z.string(),

@@ -195,6 +195,22 @@ await shot(companion, '20-island-panel')
 await companion.click('[aria-label="Back to island"]')
 await companion.waitForSelector('[aria-label="Open SkinTwin"]')
 
+// An answer stays in the island as a one-line verdict; Details opens the full panel.
+const demoId = db().products.find((p) => p.source.kind === 'demo_catalog').id
+await main.evaluate((id) => window.skintwin.companion.show({ type: 'analyze-product', productId: id }), demoId)
+await companion.waitForSelector('button:has-text("Details")', { timeout: 15_000 })
+await sleep(700)
+ib = await islandBounds()
+check(ib.b.height < 400, 'the answer stays in the island as a short verdict')
+await shot(companion, '20-island-result')
+await companion.click('button:has-text("Details")')
+await companion.waitForSelector('text=Here’s what I found for you')
+await sleep(700)
+await shot(companion, '20-island-details')
+check((await islandBounds()).b.height > 400, 'Details opens the full answer')
+await companion.click('[aria-label="Back to island"]')
+await companion.waitForSelector('[aria-label="Open SkinTwin"]')
+
 // The rest of the companion checks use the floating orb.
 await main.evaluate(() => window.skintwin.db.mutate({ type: 'settings.update', patch: { companion: { style: 'orb' } } }))
 await companion.waitForSelector('[aria-label="Talk to SkinTwin"]')
@@ -262,7 +278,7 @@ check(await companion.evaluate(() => document.body.innerText.includes('Offline r
 await clickText(companion, 'Save')
 await sleep(500)
 check(db().saved.some((s) => s.productId === body.productId && s.source === 'companion'), 'companion save persisted')
-check(db().conversations.length === 1 && db().conversations[0].messages.length === 2, 'conversation persisted')
+check(db().conversations.some((c) => c.messages.some((m) => m.role === 'user' && m.productId === body.productId) && c.messages.some((m) => m.role === 'assistant' && m.productId === body.productId)), 'conversation persisted')
 await go('/saved')
 await shot(main, '18-saved-after-companion')
 check(await main.evaluate(() => document.body.innerText.includes('Niacinamide 10% + Zinc 1% Serum')), 'saved product visible in main app')

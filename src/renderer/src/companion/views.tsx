@@ -141,7 +141,7 @@ export function HomeView({ hasProduct, onPick }: { hasProduct: boolean; onPick: 
 
 // ---------- Verdict ----------
 
-const VERDICTS: Record<AssistantReply['verdict'], { title: string; tone: 'good' | 'mixed' | 'bad' | 'unknown' }> = {
+export const VERDICTS: Record<AssistantReply['verdict'], { title: string; tone: 'good' | 'mixed' | 'bad' | 'unknown' }> = {
   good_match: { title: 'Good for your skin', tone: 'good' },
   mixed: { title: 'Mixed fit — read the notes', tone: 'mixed' },
   not_recommended: { title: 'Not a good fit for you', tone: 'bad' },

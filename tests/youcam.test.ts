@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { DEFAULT_SD_ACTIONS, MockSkinAnalysis, normalizeSkinType, parseYouCamResult, YouCamError, YouCamProvider } from '../src/main/services/youcam'
+import { DEFAULT_SD_ACTIONS, maskLinks, MockSkinAnalysis, normalizeSkinType, parseYouCamResult, resultShape, YouCamError, YouCamProvider } from '../src/main/services/youcam'
 
 const RESULTS = {
   output: [
@@ -59,8 +59,9 @@ describe('YouCam provider flow', () => {
     }))
     const stages: string[] = []
     const p = new YouCamProvider('KEY', 'https://api.example', ['moisture'], 1, 5000)
-    const a = await p.analyze(Buffer.from([1, 2, 3, 4]), 'image/jpeg', new AbortController().signal, (s) => stages.push(s))
+    const { analysis: a, masks } = await p.analyze(Buffer.from([1, 2, 3, 4]), 'image/jpeg', new AbortController().signal, (s) => stages.push(s))
     expect(a.metrics).toHaveLength(3)
+    expect(masks).toEqual([])
     expect(stages).toEqual(['uploading', 'queued', 'analyzing', 'finalizing'])
     expect(calls[1]).toBe('PUT https://upload.example/x')
   })
@@ -117,9 +118,29 @@ describe('YouCam skin type', () => {
   })
 })
 
+describe('mask links', () => {
+  it('keeps https mask links per labelled measurement, dropping anything else', () => {
+    const links = maskLinks({
+      output: [
+        { type: 'acne', ui_score: 70, mask_urls: ['https://s3.example/acne.png', 'http://insecure.example/x.png', 42] },
+        { type: 'hd_redness', ui_score: 80, mask_urls: ['https://s3.example/red.png'] },
+        { type: 'skin_type', region: 'whole', skin_type: 'Normal', mask_urls: ['https://s3.example/type.png'] },
+        { type: 'pore', ui_score: 60 }
+      ]
+    })
+    expect(links).toEqual([
+      { key: 'acne', label: 'Acne', urls: ['https://s3.example/acne.png'] },
+      { key: 'redness', label: 'Redness', urls: ['https://s3.example/red.png'] }
+    ])
+    expect(maskLinks(null)).toEqual([])
+    expect(resultShape({ output: [{ type: 'acne', ui_score: 1, mask_urls: [] }] })).toBe('acne: {type, ui_score, mask_urls}')
+  })
+})
+
 describe('mock analysis', () => {
   it('produces only labelled, scored metrics (no skin_type score)', async () => {
-    const a = await new MockSkinAnalysis().analyze(Buffer.alloc(5000), 'image/jpeg', new AbortController().signal, () => {})
+    const { analysis: a, masks } = await new MockSkinAnalysis().analyze(Buffer.alloc(5000), 'image/jpeg', new AbortController().signal, () => {})
+    expect(masks).toEqual([])
     expect(a.isMock).toBe(true)
     expect(a.metrics.map((m) => m.key)).not.toContain('skin_type')
     expect(a.metrics.every((m) => typeof m.label === 'string' && m.label.length > 0)).toBe(true)
