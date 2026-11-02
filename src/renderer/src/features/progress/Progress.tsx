@@ -7,6 +7,7 @@ import { formatDate } from '@renderer/lib/format'
 import { navigate, useRoute } from '@renderer/lib/router'
 import { mutate, useDb } from '@renderer/lib/store'
 import { AnalysisResult, summaryScore } from '../analysis/Analyze'
+import { SkinTimeline } from './Timeline'
 
 /** Change between two analyses for metrics both reported. Nothing is interpolated. */
 function delta(current: SkinAnalysis, previous: SkinAnalysis | undefined) {
@@ -53,7 +54,8 @@ export function Progress() {
   const metricKeys = [...new Set(real.flatMap((a) => a.metrics.map((m) => m.key)))]
   return (
     <div className="space-y-6">
-      <SectionTitle eyebrow="Skin progress" title="How your skin is trending" body="Built only from analyses you’ve saved. Mock results are excluded. Lighting and camera differences affect scores, so look at trends over several analyses." />
+      <SectionTitle eyebrow="Skin timeline" title="What’s changed, and when" body="Built only from what you’ve recorded: scans, routine ticks, opened dates and reactions. Mock results are excluded. Lighting and camera differences affect scores, so look at trends over several scans." />
+      <SkinTimeline />
       {real.length === 0 ? (
         <EmptyState icon={<TrendingUp />} title="No analyses yet" body="Run your first YouCam analysis to start tracking." action={<Button variant="primary" onClick={() => navigate('/analyze')}>Analyze my skin</Button>} />
       ) : (

@@ -186,6 +186,14 @@ check(db().analyses.length === 1 && db().analyses[0].isMock === true, 'mock anal
 check(/^New analysis · /.test(await main.textContent('[data-testid="analysis-heading"]')), 'Analyze labels the shown result with its date')
 check(db().analyses[0].capture?.source === 'upload' && !('photo' in db().analyses[0].capture), 'capture conditions saved with the analysis, without the photo')
 
+// ---------- Journey B2: skin timeline (mock scans stay off it) ----------
+for (const date of ['2026-10-12', '2026-10-20', '2026-10-28']) await main.evaluate(([stepId, d]) => window.skintwin.db.mutate({ type: 'routine.toggleComplete', period: 'am', stepId, date: d }), [db().routines.am.steps[0].id, date])
+await go('/progress')
+await main.waitForSelector('[data-testid="timeline"]')
+await sleep(400)
+await shot(main, '17b-timeline')
+check(!!(await main.$('[data-testid="since-started"]')), 'timeline shows routine use, reactions and the since-you-started panel')
+
 // ---------- Companion ----------
 await main.evaluate(() => window.skintwin.companion.show())
 let companion
