@@ -174,6 +174,7 @@ await main.setInputFiles('#selfie-upload', { name: 'selfie.jpg', mimeType: 'imag
 await main.waitForSelector('text=Run mock analysis (dev)')
 await sleep(600)
 await shot(main, '16-analyze-preview')
+check(await main.evaluate(() => document.body.innerText.includes('No camera information in this photo')), 'an upload without camera data is flagged as possibly edited')
 await clickText(main, 'Run mock analysis (dev)')
 await main.waitForSelector('text=Mock data — not a real result', { timeout: 15_000 }).catch(async (e) => {
   console.log('DEBUG analyze text:', (await main.evaluate(() => document.body.innerText)).slice(0, 1500))
@@ -183,6 +184,7 @@ await main.waitForSelector('text=Mock data — not a real result', { timeout: 15
 await shot(main, '17-analyze-result')
 check(db().analyses.length === 1 && db().analyses[0].isMock === true, 'mock analysis saved and flagged as mock')
 check(/^New analysis · /.test(await main.textContent('[data-testid="analysis-heading"]')), 'Analyze labels the shown result with its date')
+check(db().analyses[0].capture?.source === 'upload' && !('photo' in db().analyses[0].capture), 'capture conditions saved with the analysis, without the photo')
 
 // ---------- Companion ----------
 await main.evaluate(() => window.skintwin.companion.show())
@@ -212,6 +214,10 @@ await shot(companion, '20-island-hover')
 check(!!(await companion.waitForSelector('button:has-text("Skin")').catch(() => null)), 'hovering the island shows Talk / Ask / Circle / Skin')
 // Skin scan: the camera panel drops down. (macOS blocks camera automation, so capture is tested live.)
 await companion.click('button:has-text("Skin")')
+await companion.waitForSelector('[data-testid="prescan"]')
+check(true, 'the first scan starts with the pre-scan checklist')
+await shot(companion, '20-island-prescan')
+await clickText(companion, 'I’m ready')
 await companion.waitForSelector('[data-testid="skin-scan"]')
 await sleep(700)
 ib = await islandBounds()

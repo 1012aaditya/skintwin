@@ -1,13 +1,15 @@
 import { AlertTriangle, ArrowDown, ArrowUp, Camera, Check, Minus, RefreshCcw, ScanFace, Sparkles, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import type { AnalysisMask, SkinAnalysis } from '@shared/models'
+import type { AnalysisMask, CaptureConditions, SkinAnalysis } from '@shared/models'
 import { metricDeltas, previousRealScan, scanSummary } from '@shared/skin'
 import { ProgressRing } from '@renderer/components/ui'
 import { cn } from '@renderer/lib/cn'
 import { formatDate } from '@renderer/lib/format'
 import { coverCrop } from '@renderer/lib/media'
 import { useDb, useProviders } from '@renderer/lib/store'
-import { allOk, firstIssue } from '../features/analysis/facecheck'
+import { openCamera, type CameraSession } from '../features/analysis/camera'
+import { activeEffects, allOk, firstIssue, smoothingWarning } from '../features/analysis/facecheck'
+import { EffectsNotice, liveConditions, PreScanChecklist } from '../features/analysis/ScanNotes'
 import { Heatmap } from '../features/analysis/Heatmap'
 import { MetricTile } from '../features/analysis/Analyze'
 import { CAPTURE_ASPECT, MIN_CAPTURE_SHORT_SIDE, useFaceGuide } from '../features/analysis/useFaceGuide'
@@ -20,8 +22,9 @@ import { CAPTURE_ASPECT, MIN_CAPTURE_SHORT_SIDE, useFaceGuide } from '../feature
 
 export type SkinScan =
   | { kind: 'idle' }
+  | { kind: 'checklist' }
   | { kind: 'camera' }
-  | { kind: 'preview'; blob: Blob; url: string }
+  | { kind: 'preview'; blob: Blob; url: string; capture: CaptureConditions }
   | { kind: 'running'; requestId: string; stage: string; url: string }
   | { kind: 'done'; analysis: SkinAnalysis; masks: AnalysisMask[]; url: string }
   | { kind: 'error'; message: string }
@@ -35,39 +38,53 @@ export const SCAN_STAGE: Record<string, { title: string; progress: number }> = {
 }
 
 /** Camera + face guide, then a preview with an explicit Analyze button (each run uses a YouCam credit). */
-export function SkinCameraView({ scan, onCaptured, onAnalyze, onRetake, onClose }: { scan: SkinScan; onCaptured: (blob: Blob) => void; onAnalyze: () => void; onRetake: () => void; onClose: () => void }) {
+export function SkinCameraView({ scan, onStartCamera, onCaptured, onAnalyze, onRetake, onClose }: { scan: SkinScan; onStartCamera: () => void; onCaptured: (blob: Blob, capture: CaptureConditions) => void; onAnalyze: () => void; onRetake: () => void; onClose: () => void }) {
   const providers = useProviders()
   const videoRef = useRef<HTMLVideoElement>(null)
   const overlayRef = useRef<HTMLCanvasElement>(null)
   const [camError, setCamError] = useState<string | null>(null)
+  const [session, setSession] = useState<CameraSession | null>(null)
+  const locked = useRef(false)
   const live = scan.kind === 'camera' && !camError
-  const guide = useFaceGuide(videoRef, overlayRef, live, (photo) => photo.toBlob((b) => b && onCaptured(b), 'image/jpeg', 0.92))
-  const ok = guide.status === 'ready' && allOk(guide.checks)
+  const effectsOn = session ? activeEffects(session.effects).length > 0 : false
+  const guide = useFaceGuide(videoRef, overlayRef, live && !!session, (photo, m) => photo.toBlob((b) => b && onCaptured(b, liveConditions(session, m, locked.current)), 'image/jpeg', 0.92), { holdCapture: effectsOn })
+  const ok = guide.status === 'ready' && allOk(guide.checks) && !effectsOn
   const issue = firstIssue(guide.checks)
+  const smoothed = smoothingWarning(guide.detail)
 
   useEffect(() => {
     if (scan.kind !== 'camera') return
-    let stream: MediaStream | null = null
+    let cam: CameraSession | null = null
     let stopped = false
+    let lockTimer: ReturnType<typeof setTimeout> | undefined
+    locked.current = false
     void (async () => {
       const os = await window.skintwin.media.request('camera')
       if (os === 'denied' || os === 'restricted') return setCamError('Camera access is off. Turn it on in System Settings › Privacy & Security › Camera.')
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1920 }, height: { ideal: 1080 }, facingMode: 'user' } })
-        if (stopped) return stream.getTracks().forEach((t) => t.stop())
+        cam = await openCamera()
+        if (stopped) return cam.stream.getTracks().forEach((t) => t.stop())
+        setSession(cam)
         if (videoRef.current) {
-          videoRef.current.srcObject = stream
+          videoRef.current.srcObject = cam.stream
           void videoRef.current.play()
         }
+        // let auto exposure settle on the face, then hold it for the capture
+        const c = cam
+        lockTimer = setTimeout(() => void c.lockExposure().then((v) => (locked.current = v)), 1500)
       } catch {
         setCamError('No camera is available.')
       }
     })()
     return () => {
       stopped = true
-      stream?.getTracks().forEach((t) => t.stop())
+      clearTimeout(lockTimer)
+      cam?.stream.getTracks().forEach((t) => t.stop())
+      setSession(null)
     }
   }, [scan.kind])
+
+  if (scan.kind === 'checklist') return <PreScanChecklist onStart={onStartCamera} onCancel={onClose} />
 
   const captureNow = () => {
     const v = videoRef.current
@@ -81,7 +98,7 @@ export function SkinCameraView({ scan, onCaptured, onAnalyze, onRetake, onClose 
     ctx.translate(c.width, 0)
     ctx.scale(-1, 1)
     ctx.drawImage(v, x, y, w, h, 0, 0, c.width, c.height)
-    c.toBlob((b) => b && onCaptured(b), 'image/jpeg', 0.92)
+    c.toBlob((b) => b && onCaptured(b, liveConditions(session, guide.lastMeasure(), locked.current)), 'image/jpeg', 0.92)
   }
 
   const configured = providers?.youcam.configured || providers?.youcam.mockAllowed
@@ -96,7 +113,7 @@ export function SkinCameraView({ scan, onCaptured, onAnalyze, onRetake, onClose 
             <canvas ref={overlayRef} className="pointer-events-none absolute inset-0 h-full w-full -scale-x-100" />
             <div className={cn('pointer-events-none absolute inset-[10%_15%_14%] rounded-[50%] border-2 transition-colors', ok ? 'border-solid border-mint-300 shadow-[0_0_24px_rgb(120_240_190/0.5)]' : 'border-dashed border-white/50')} />
             <p aria-live="polite" className="pointer-events-none absolute inset-x-3 bottom-3 text-center text-[13px] font-semibold text-white [text-shadow:0_1px_6px_rgb(0_0_0/0.7)]">
-              {guide.status === 'loading' ? 'Starting the face guide…' : guide.status === 'unavailable' ? 'Fill the oval with your face' : ok ? 'Perfect — hold still…' : (issue?.hint ?? 'Bring your face into the oval')}
+              {guide.status === 'loading' ? 'Starting the face guide…' : guide.status === 'unavailable' ? 'Fill the oval with your face' : effectsOn ? 'Turn off the video effect first' : ok ? 'Perfect — hold still…' : (issue?.hint ?? 'Bring your face into the oval')}
             </p>
           </>
         )}
@@ -108,6 +125,9 @@ export function SkinCameraView({ scan, onCaptured, onAnalyze, onRetake, onClose 
           </div>
         )}
       </div>
+      {scan.kind === 'camera' && session && <EffectsNotice effects={session.effects} studioLightUnknown={session.studioLightUnknown} />}
+      {scan.kind === 'camera' && smoothed && <p className="rounded-2xl bg-amber-300/10 p-2.5 text-[12.5px] text-amber-100">{smoothed}</p>}
+      {scan.kind === 'preview' && smoothingWarning(scan.capture.skinDetail) && <p className="rounded-2xl bg-amber-300/10 p-2.5 text-[12.5px] text-amber-100">{smoothingWarning(scan.capture.skinDetail)}</p>}
       {scan.kind === 'camera' && guide.status === 'ready' && guide.checks.length > 0 && (
         <ul className="grid grid-cols-2 gap-x-3 gap-y-1 text-[12px]">
           {guide.checks.map((c) => (

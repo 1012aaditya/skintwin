@@ -8,6 +8,7 @@ import { cn } from '@renderer/lib/cn'
 import { blobToBase64 } from '@renderer/lib/media'
 import { newRequestId, useProviders, useSnapshot } from '@renderer/lib/store'
 import { scanSummary } from '@shared/skin'
+import { preScanNeeded } from '../features/analysis/ScanNotes'
 import { SCAN_STAGE, SkinCameraView, SkinResultView, type SkinScan } from './SkinScan'
 import { IslandBar, NO_NOTCH, panelClip, pillClip, topRow, type IslandInfo } from './Island'
 import { companionReducer, initialContext, isExpanded, type CompanionContext, type CompanionState } from './machine'
@@ -160,7 +161,7 @@ export function Companion() {
     setScanState(next)
   }, [])
   const [scanDetails, setScanDetails] = useState(false)
-  const scanPanel = scan.kind === 'camera' || scan.kind === 'preview' || scan.kind === 'error' || (scan.kind === 'done' && scanDetails)
+  const scanPanel = scan.kind === 'checklist' || scan.kind === 'camera' || scan.kind === 'preview' || scan.kind === 'error' || (scan.kind === 'done' && scanDetails)
   useEffect(
     () =>
       window.skintwin.analysis.onProgress(({ requestId, stage }) => {
@@ -174,7 +175,7 @@ export function Companion() {
     if (s.kind !== 'preview') return
     const requestId = newRequestId()
     setScan({ kind: 'running', requestId, stage: 'starting', url: s.url })
-    const res = await window.skintwin.analysis.run({ requestId, imageBase64: await blobToBase64(s.blob), mimeType: s.blob.type || 'image/jpeg' })
+    const res = await window.skintwin.analysis.run({ requestId, imageBase64: await blobToBase64(s.blob), mimeType: s.blob.type || 'image/jpeg', capture: s.capture })
     const now = scanRef.current
     if (now.kind !== 'running' || now.requestId !== requestId) return // cancelled meanwhile
     if (res.ok) {
@@ -281,7 +282,7 @@ export function Companion() {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         const s = scanRef.current
-        if (s.kind === 'camera' || s.kind === 'preview' || s.kind === 'error') cancelScan()
+        if (s.kind === 'checklist' || s.kind === 'camera' || s.kind === 'preview' || s.kind === 'error') cancelScan()
         else if (s.kind === 'done') setScanDetails(false)
         else if (ctxRef.current.state === 'listening' || ctxRef.current.state === 'processing') cancel()
         else if (typing) setTyping(false)
@@ -340,7 +341,7 @@ export function Companion() {
                 onSkin={() => {
                   stopSpeaking.current()
                   setScanDetails(false)
-                  setScan({ kind: 'camera' })
+                  setScan({ kind: preScanNeeded() ? 'checklist' : 'camera' })
                 }}
                 skin={scan.kind === 'running' ? { kind: 'progress', ...(SCAN_STAGE[scan.stage] ?? SCAN_STAGE.analyzing!) } : scan.kind === 'done' ? { kind: 'result', line: scanSummary(scan.analysis, snap.analyses).line, mock: scan.analysis.isMock } : null}
                 onSkinCancel={cancelScan}
@@ -422,7 +423,7 @@ export function Companion() {
                   scan.kind === 'done' ? (
                     <SkinResultView analysis={scan.analysis} masks={scan.masks} photo={scan.url} />
                   ) : (
-                    <SkinCameraView scan={scan} onCaptured={(blob) => setScan({ kind: 'preview', blob, url: URL.createObjectURL(blob) })} onAnalyze={() => void analyzeScan()} onRetake={() => setScan({ kind: 'camera' })} onClose={cancelScan} />
+                    <SkinCameraView scan={scan} onStartCamera={() => setScan({ kind: 'camera' })} onCaptured={(blob, capture) => setScan({ kind: 'preview', blob, url: URL.createObjectURL(blob), capture })} onAnalyze={() => void analyzeScan()} onRetake={() => setScan({ kind: 'camera' })} onClose={cancelScan} />
                   )
                 ) : (
                 <AnimatePresence mode="wait" initial={false}>

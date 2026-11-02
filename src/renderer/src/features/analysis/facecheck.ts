@@ -263,3 +263,60 @@ export function faceCrop(face: Rect, imgW: number, imgH: number, aspect = 4 / 5,
   const y = Math.max(0, Math.min(imgH - ch, cy - ch / 2))
   return { x: Math.round(x), y: Math.round(y), w: Math.round(cw), h: Math.round(ch) }
 }
+
+// ---------- Camera effects ----------
+
+/**
+ * Video effects macOS can apply to every app's camera (Control Center › Video Effects).
+ * Chromium reports some of them as track capabilities/settings; what it doesn't report,
+ * SkinTwin can't see.
+ */
+export type EffectKey = 'backgroundBlur' | 'lightingCorrection' | 'faceFraming' | 'eyeGazeCorrection'
+export const EFFECTS: Record<EffectKey, { name: string; fix: string }> = {
+  backgroundBlur: { name: 'Portrait (background blur)', fix: 'Control Center › Video Effects → turn off Portrait' },
+  lightingCorrection: { name: 'Studio Light', fix: 'Control Center › Video Effects → turn off Studio Light' },
+  faceFraming: { name: 'Center Stage', fix: 'Control Center › Video Effects → turn off Center Stage' },
+  eyeGazeCorrection: { name: 'Eye Contact', fix: 'Control Center › Video Effects → turn off Eye Contact' }
+}
+
+export interface EffectState {
+  key: EffectKey
+  /** null when the browser doesn't report this effect at all */
+  on: boolean | null
+  /** the app can switch it off itself */
+  adjustable: boolean
+}
+
+/** What a camera track says about each effect. `caps`/`settings` are the track's raw reports. */
+export function cameraEffects(caps: Record<string, unknown>, settings: Record<string, unknown>): EffectState[] {
+  return (Object.keys(EFFECTS) as EffectKey[]).map((key) => {
+    const s = settings[key]
+    const c = caps[key]
+    return { key, on: typeof s === 'boolean' ? s : null, adjustable: Array.isArray(c) && c.includes(false) }
+  })
+}
+
+/** Effects still on — these hold auto-capture until the user switches them off. */
+export const activeEffects = (states: EffectState[]) => states.filter((e) => e.on === true)
+
+// ---------- Smoothing / beauty filters ----------
+
+/**
+ * Fine detail on the cheeks relative to the eyes. Eyes always keep sharp edges (lashes,
+ * the iris rim), while a beauty filter flattens skin texture, so very little cheek detail
+ * next to normal eye detail suggests smoothing. Uncalibrated heuristic: it only ever warns.
+ */
+export function skinDetailRatio(cheekVariance: number[], eyeVariance: number[]): number | null {
+  const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length
+  if (!cheekVariance.length || !eyeVariance.length) return null
+  const eyes = mean(eyeVariance)
+  if (eyes < 20) return null // eyes themselves are blurry (motion, focus): can't judge skin
+  return mean(cheekVariance) / eyes
+}
+
+/** Below this, the skin looks smoothed. Deliberately low so real skin rarely trips it. */
+export const SMOOTHING_RATIO = 0.015
+
+export function smoothingWarning(ratio: number | null): string | null {
+  return ratio != null && ratio < SMOOTHING_RATIO ? 'This photo looks smoothed — use an unfiltered photo (no beauty filter or skin smoothing).' : null
+}

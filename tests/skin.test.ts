@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { SkinAnalysis } from '@shared/models'
-import { metricDeltas, previousRealScan, scanScore, scanSummary } from '@shared/skin'
+import { comparable, metricDeltas, previousRealScan, scanScore, scanSummary } from '@shared/skin'
 
 const scan = (id: string, day: number, scores: Record<string, number>, extra: Partial<SkinAnalysis> = {}): SkinAnalysis => ({
   id,
@@ -47,5 +47,19 @@ describe('skin scan summary', () => {
 
   it('lists per-metric changes, biggest first', () => {
     expect(metricDeltas(now, old).map((d) => [d.key, d.delta])).toEqual([['moisture', 10], ['redness', 4]])
+  })
+
+  it('only compares scans taken in similar conditions', () => {
+    const cap = (c: Partial<NonNullable<SkinAnalysis['capture']>> = {}) => ({ source: 'live' as const, camera: 'FaceTime HD Camera', lightMean: 0.5, lightBalance: 0.9, effectsOn: [], exposureLocked: false, skinDetail: 0.05, ...c })
+    const a = scan('a', 1, { moisture: 60 }, { capture: cap() })
+    const dim = scan('dim', 5, { moisture: 40 }, { capture: cap({ lightMean: 0.3 }) })
+    const effect = scan('fx', 8, { moisture: 90 }, { capture: cap({ effectsOn: ['lightingCorrection'] }) })
+    const b = scan('b', 12, { moisture: 66 }, { capture: cap({ lightMean: 0.55 }) })
+    expect(comparable(b, dim)).toMatchObject({ ok: false, reason: 'very different light' })
+    expect(comparable(b, effect)).toMatchObject({ ok: false, reason: 'a camera effect was on' })
+    expect(comparable(b, scan('up', 2, {}, { capture: cap({ source: 'upload' }) })).ok).toBe(false)
+    expect(comparable(b, old)).toEqual({ ok: true, known: false, reason: null }) // saved before conditions were recorded
+    expect(previousRealScan([b, effect, dim, a], b)?.id).toBe('a')
+    expect(scanSummary(b, [b, dim]).line).toMatch(/no earlier scan in similar light to compare$/)
   })
 })

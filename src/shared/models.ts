@@ -112,6 +112,21 @@ export const AnalysisMetricSchema = z.object({
 })
 export type AnalysisMetric = z.infer<typeof AnalysisMetricSchema>
 
+/** How a scan's photo was taken — so later scans are compared only with similar ones. Never the photo itself. */
+export const CaptureConditionsSchema = z.object({
+  source: z.enum(['live', 'upload']),
+  camera: z.string().max(120).nullable(),
+  /** face light from the on-device check: mean 0–1, left/right balance 0–1 */
+  lightMean: z.number().min(0).max(1).nullable(),
+  lightBalance: z.number().min(0).max(1).nullable(),
+  /** macOS video effects reported on at capture; null when the browser couldn't tell */
+  effectsOn: z.array(z.string().max(40)).max(8).nullable(),
+  exposureLocked: z.boolean(),
+  /** cheek ÷ eye fine detail; low suggests smoothing */
+  skinDetail: z.number().min(0).nullable()
+})
+export type CaptureConditions = z.infer<typeof CaptureConditionsSchema>
+
 export const SkinAnalysisSchema = z.object({
   id: z.string(),
   createdAt: z.string(),
@@ -121,7 +136,8 @@ export const SkinAnalysisSchema = z.object({
   skinAge: z.number().nullable(),
   skinType: z.string().nullable(),
   metrics: z.array(AnalysisMetricSchema),
-  taskId: z.string().nullable()
+  taskId: z.string().nullable(),
+  capture: CaptureConditionsSchema.optional()
 })
 export type SkinAnalysis = z.infer<typeof SkinAnalysisSchema>
 

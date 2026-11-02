@@ -5,7 +5,7 @@ import wasmLoaderPath from '@mediapipe/tasks-vision/vision_wasm_internal.js?url'
 import wasmBinaryPath from '@mediapipe/tasks-vision/vision_wasm_internal.wasm?url'
 import modelPath from '@renderer/assets/face_landmarker.task?url'
 import { coverCrop } from '@renderer/lib/media'
-import { allOk, boxInCrop, LIMITS, evaluateFace, faceCrop, measureLight, poseFromMatrix, sharpness, type Check, type FaceMeasure, type LightMeasure, type Rect } from './facecheck'
+import { allOk, boxInCrop, LIMITS, evaluateFace, faceCrop, measureLight, poseFromMatrix, sharpness, skinDetailRatio, type Check, type FaceMeasure, type LightMeasure, type Rect } from './facecheck'
 
 export const CAPTURE_ASPECT = 4 / 5
 /** YouCam needs ≥480px on the short side; leave headroom. */
@@ -49,10 +49,42 @@ function pixels(scratch: HTMLCanvasElement, src: CanvasImageSource, r: Rect, w: 
   return ctx.getImageData(0, 0, w, h).data
 }
 
+/** What the photo looked like when it was taken — stored with the analysis so scans can be compared. */
+export interface CaptureMeasure {
+  light: LightMeasure | null
+  /** cheek ÷ eye fine detail; low suggests a smoothing filter */
+  detail: number | null
+}
+
+// MediaPipe face-mesh landmarks: cheek centres, and the corners/lids of each eye.
+const CHEEKS = [50, 280]
+const EYES = [
+  [33, 133, 159, 145],
+  [362, 263, 386, 374]
+]
+
+/** Cheek and eye fine-detail variance, each patch scaled to the same 48px so they're comparable. */
+function detailRatio(lms: { x: number; y: number }[], src: CanvasImageSource, srcW: number, srcH: number, faceW: number, scratch: HTMLCanvasElement): number | null {
+  const P = 48
+  const side = faceW * 0.14
+  const cheeks = CHEEKS.map((i) => {
+    const r = { x: lms[i]!.x * srcW - side / 2, y: lms[i]!.y * srcH - side / 2, w: side, h: side }
+    return sharpness(pixels(scratch, src, r, P, P), P, P)
+  })
+  const eyes = EYES.map((ids) => {
+    const xs = ids.map((i) => lms[i]!.x * srcW)
+    const ys = ids.map((i) => lms[i]!.y * srcH)
+    const w = (Math.max(...xs) - Math.min(...xs)) * 1.2
+    const r = { x: Math.min(...xs) - w * 0.1, y: (Math.min(...ys) + Math.max(...ys)) / 2 - w / 2, w, h: w }
+    return sharpness(pixels(scratch, src, r, P, P), P, P)
+  })
+  return skinDetailRatio(cheeks, eyes)
+}
+
 /** Face measurements for one detection result. `crop` is the region YouCam will receive, in source pixels. */
-function measure(r: FaceLandmarkerResult, src: CanvasImageSource, srcW: number, srcH: number, crop: Rect, scratch: HTMLCanvasElement, prev: { x: number; y: number }[] | null): FaceMeasure & { points: { x: number; y: number }[] | null; faceRect: Rect | null } {
+function measure(r: FaceLandmarkerResult, src: CanvasImageSource, srcW: number, srcH: number, crop: Rect, scratch: HTMLCanvasElement, prev: { x: number; y: number }[] | null, withDetail = false): FaceMeasure & { points: { x: number; y: number }[] | null; faceRect: Rect | null; detail: number | null } {
   const faces = r.faceLandmarks.length
-  if (faces !== 1) return { faces, box: null, yaw: 0, pitch: 0, roll: 0, eyesClosed: 0, mouthOpen: 0, smile: 0, light: null, motion: null, points: null, faceRect: null }
+  if (faces !== 1) return { faces, box: null, yaw: 0, pitch: 0, roll: 0, eyesClosed: 0, mouthOpen: 0, smile: 0, light: null, motion: null, points: null, faceRect: null, detail: null }
   const lms = r.faceLandmarks[0]!
   const box = boxInCrop(lms, srcW, srcH, crop)
   const pose = r.facialTransformationMatrixes?.[0] ? poseFromMatrix(r.facialTransformationMatrixes[0].data) : { yaw: 0, pitch: 0, roll: 0 }
@@ -68,7 +100,8 @@ function measure(r: FaceLandmarkerResult, src: CanvasImageSource, srcW: number, 
   const mouthOpen = Math.max(blend(r, 'jawOpen'), Math.min(1, lipGap / 0.1))
   const smile = Math.max(blend(r, 'mouthSmileLeft'), blend(r, 'mouthSmileRight'))
   const motion = prev && prev.length === points.length ? points.reduce((s, p, i) => s + Math.hypot(p.x - prev[i]!.x, p.y - prev[i]!.y), 0) / points.length : null
-  return { faces, box, ...pose, eyesClosed: Math.max(blend(r, 'eyeBlinkLeft'), blend(r, 'eyeBlinkRight')), mouthOpen, smile, light, motion, points, faceRect }
+  const detail = withDetail ? detailRatio(lms, src, srcW, srcH, faceRect.w, scratch) : null
+  return { faces, box, ...pose, eyesClosed: Math.max(blend(r, 'eyeBlinkLeft'), blend(r, 'eyeBlinkRight')), mouthOpen, smile, light, motion, points, faceRect, detail }
 }
 
 /**
@@ -112,12 +145,17 @@ export type GuideStatus = 'loading' | 'ready' | 'unavailable'
  * lighting heatmap into `overlayRef`, and once every check has held for HOLD_MS calls
  * `onCapture` with the sharpest good frame (mirrored, 4:5, ≥720px).
  */
-export function useFaceGuide(videoRef: RefObject<HTMLVideoElement | null>, overlayRef: RefObject<HTMLCanvasElement | null>, active: boolean, onCapture: (photo: HTMLCanvasElement) => void) {
+export function useFaceGuide(videoRef: RefObject<HTMLVideoElement | null>, overlayRef: RefObject<HTMLCanvasElement | null>, active: boolean, onCapture: (photo: HTMLCanvasElement, info: CaptureMeasure) => void, opts: { holdCapture?: boolean } = {}) {
   const [status, setStatus] = useState<GuideStatus>('loading')
   const [checks, setChecks] = useState<Check[]>([])
   const [hold, setHold] = useState(0)
+  const [detail, setDetail] = useState<number | null>(null)
   const captureRef = useRef(onCapture)
   captureRef.current = onCapture
+  // e.g. a macOS video effect is on: keep checking, but don't take the photo by itself
+  const holdRef = useRef(!!opts.holdCapture)
+  holdRef.current = !!opts.holdCapture
+  const lastRef = useRef<CaptureMeasure>({ light: null, detail: null })
 
   useEffect(() => {
     if (!active) return
@@ -158,10 +196,12 @@ export function useFaceGuide(videoRef: RefObject<HTMLVideoElement | null>, overl
           lastTs = now
           const crop = coverCrop(v.videoWidth, v.videoHeight, CAPTURE_ASPECT)
           const r = lm.detectForVideo(v, now)
-          const m = measure(r, v, v.videoWidth, v.videoHeight, crop, scratch, prev)
+          // fine-detail sampling is the costliest part; a few times a second is plenty
+          const m = measure(r, v, v.videoWidth, v.videoHeight, crop, scratch, prev, now - lastUi > 100)
           prev = m.points
+          if (m.light) lastRef.current = { light: m.light, detail: m.detail ?? lastRef.current.detail }
           const cs = evaluateFace(m, { live: true })
-          const ok = allOk(cs)
+          const ok = allOk(cs) && !holdRef.current
           if (overlay) {
             if (overlay.width !== Math.round(crop.w / 2)) {
               overlay.width = Math.round(crop.w / 2)
@@ -179,7 +219,7 @@ export function useFaceGuide(videoRef: RefObject<HTMLVideoElement | null>, overl
               const photo = best.canvas
               stopped = true
               cancelAnimationFrame(raf)
-              captureRef.current(photo)
+              captureRef.current(photo, lastRef.current)
               return
             }
           } else {
@@ -191,6 +231,7 @@ export function useFaceGuide(videoRef: RefObject<HTMLVideoElement | null>, overl
             lastUi = now
             setChecks(cs)
             setHold(goodSince == null ? 0 : Math.min(1, (now - goodSince) / HOLD_MS))
+            if (m.detail != null) setDetail(m.detail)
           }
         }
         tick()
@@ -208,7 +249,9 @@ export function useFaceGuide(videoRef: RefObject<HTMLVideoElement | null>, overl
     }
   }, [active, videoRef, overlayRef])
 
-  return { status, checks, hold }
+  /** Measurements from the latest frame, for a manual capture. */
+  const lastMeasure = () => lastRef.current
+  return { status, checks, hold, detail, lastMeasure }
 }
 
 export interface StillCheck {
@@ -216,6 +259,7 @@ export interface StillCheck {
   /** Set when the photo was cropped around the face to make it big enough for YouCam. */
   cropped: boolean
   blob: Blob
+  measure: CaptureMeasure
 }
 
 /**
@@ -234,7 +278,7 @@ export async function checkStill(blob: Blob): Promise<StillCheck | null> {
   const run = async (b: Blob) => {
     const bmp = await createImageBitmap(b)
     const full = { x: 0, y: 0, w: bmp.width, h: bmp.height }
-    const m = measure(lm.detect(bmp), bmp, bmp.width, bmp.height, full, scratch, null)
+    const m = measure(lm.detect(bmp), bmp, bmp.width, bmp.height, full, scratch, null, true)
     return { bmp, m }
   }
   let { bmp, m } = await run(blob)
@@ -253,5 +297,5 @@ export async function checkStill(blob: Blob): Promise<StillCheck | null> {
     }
   }
   bmp.close()
-  return { checks: evaluateFace(m, { live: false }), cropped, blob }
+  return { checks: evaluateFace(m, { live: false }), cropped, blob, measure: { light: m.light, detail: m.detail } }
 }

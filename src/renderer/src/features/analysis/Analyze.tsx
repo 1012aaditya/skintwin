@@ -2,7 +2,7 @@ import { AlertTriangle, BarChart3, Camera, Check, Clock, Crop, Droplets, Grid3x3
 import { motion } from 'motion/react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { scanScore } from '@shared/skin'
-import { label, SKIN_TYPES, type AnalysisMask, type AnalysisMetric, type Concern, type SkinAnalysis, type SkinType } from '@shared/models'
+import { label, SKIN_TYPES, type AnalysisMask, type CaptureConditions, type AnalysisMetric, type Concern, type SkinAnalysis, type SkinType } from '@shared/models'
 import { Badge, Button, Card, ErrorState, ProgressRing, SectionTitle, Spinner } from '@renderer/components/ui'
 import { cn } from '@renderer/lib/cn'
 import { formatDate } from '@renderer/lib/format'
@@ -10,15 +10,19 @@ import { blobToBase64, checkImage, type ImageCheck, coverCrop } from '@renderer/
 import { navigate } from '@renderer/lib/router'
 import { mutate, newRequestId, useDb, useProviders } from '@renderer/lib/store'
 import { toast } from '@renderer/lib/toast'
-import { allOk, firstIssue } from './facecheck'
+import { openCamera, type CameraSession } from './camera'
+import { readPhotoOrigin, originWarnings } from './exif'
+import { activeEffects, allOk, firstIssue, smoothingWarning } from './facecheck'
+import { EffectsNotice, liveConditions, PreScanChecklist, preScanNeeded, uploadConditions } from './ScanNotes'
 import { Heatmap } from './Heatmap'
 import { CAPTURE_ASPECT, checkStill, MIN_CAPTURE_SHORT_SIDE, useFaceGuide, type StillCheck } from './useFaceGuide'
 
 type Phase =
   | { kind: 'idle' }
+  | { kind: 'prescan' }
   | { kind: 'camera' }
-  /** face: undefined while checking, null if the face tracker couldn't load. */
-  | { kind: 'preview'; blob: Blob; url: string; check: ImageCheck | null; face?: StillCheck | null }
+  /** face: undefined while checking, null if the face tracker couldn't load. origin: warnings about where an upload came from. */
+  | { kind: 'preview'; blob: Blob; url: string; check: ImageCheck | null; face?: StillCheck | null; capture: CaptureConditions | null; origin: string[] }
   | { kind: 'submitting'; url: string; stage: string; requestId: string }
   | { kind: 'error'; url: string | null; message: string; code?: string }
 
@@ -71,11 +75,22 @@ export function Analyze() {
   const videoRef = useRef<HTMLVideoElement>(null)
   const overlayRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
-  const guide = useFaceGuide(videoRef, overlayRef, phase.kind === 'camera', (photo) => {
-    stopCamera()
-    photo.toBlob((b) => b && void preview(b), 'image/jpeg', 0.92)
-  })
-  const guideOk = guide.status === 'ready' && allOk(guide.checks)
+  const [session, setSession] = useState<CameraSession | null>(null)
+  const exposureLocked = useRef(false)
+  const effectsOn = session ? activeEffects(session.effects).length > 0 : false
+  const guide = useFaceGuide(
+    videoRef,
+    overlayRef,
+    phase.kind === 'camera',
+    (photo, m) => {
+      const capture = liveConditions(session, m, exposureLocked.current)
+      stopCamera()
+      photo.toBlob((b) => b && void preview(b, { capture }), 'image/jpeg', 0.92)
+    },
+    { holdCapture: effectsOn }
+  )
+  const guideOk = guide.status === 'ready' && allOk(guide.checks) && !effectsOn
+  const smoothed = smoothingWarning(guide.detail)
   const issue = firstIssue(guide.checks)
 
   useEffect(() => setShown((s) => (s && db.analyses.some((a) => a.id === s.id) ? s : (db.analyses[0] ?? null))), [db.analyses])
@@ -83,6 +98,7 @@ export function Analyze() {
   const stopCamera = () => {
     streamRef.current?.getTracks().forEach((t) => t.stop())
     streamRef.current = null
+    setSession(null)
   }
   useEffect(() => stopCamera, [])
 
@@ -96,7 +112,12 @@ export function Analyze() {
 
   const configured = providers?.youcam.configured || providers?.youcam.mockAllowed
 
-  async function startCamera() {
+  function startCamera() {
+    if (preScanNeeded()) setPhase({ kind: 'prescan' })
+    else void openCameraNow()
+  }
+
+  async function openCameraNow() {
     const os = await window.skintwin.media.request('camera')
     if (os === 'denied' || os === 'restricted') {
       await mutate({ type: 'onboarding.update', patch: { permissions: { camera: 'denied' } } })
@@ -104,12 +125,13 @@ export function Analyze() {
       return
     }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1920 }, height: { ideal: 1080 }, facingMode: 'user' } })
+      // Asks the camera not to blur, reframe or relight the picture where the platform allows it.
+      const cam = await openCamera()
+      const stream = cam.stream
       streamRef.current = stream
-      // Ask the camera not to blur or relight the picture where the platform allows it.
-      const track = stream.getVideoTracks()[0]
-      const caps = (track?.getCapabilities?.() ?? {}) as Record<string, unknown>
-      if (track && 'backgroundBlur' in caps) await track.applyConstraints({ advanced: [{ backgroundBlur: false } as MediaTrackConstraintSet] }).catch(() => undefined)
+      setSession(cam)
+      exposureLocked.current = false
+      setTimeout(() => void (streamRef.current === stream && cam.lockExposure().then((v) => (exposureLocked.current = v))), 1500)
       await mutate({ type: 'onboarding.update', patch: { permissions: { camera: 'granted' } } })
       setPhase({ kind: 'camera' })
       requestAnimationFrame(() => {
@@ -137,15 +159,20 @@ export function Analyze() {
     ctx.translate(c.width, 0)
     ctx.scale(-1, 1)
     ctx.drawImage(v, x, y, w, h, 0, 0, c.width, c.height)
+    const capture = liveConditions(session, guide.lastMeasure(), exposureLocked.current)
     stopCamera()
     const blob = await new Promise<Blob>((r) => c.toBlob((b) => r(b!), 'image/jpeg', 0.92))
-    await preview(blob)
+    await preview(blob, { capture })
   }
 
-  async function preview(blob: Blob) {
+  /** `capture` is set for live photos; an upload passes its file name and is checked for edits. */
+  async function preview(blob: Blob, from: { capture: CaptureConditions } | { fileName: string }) {
     let url = URL.createObjectURL(blob)
-    setPhase({ kind: 'preview', blob, url, check: null })
+    const live = 'capture' in from
+    setPhase({ kind: 'preview', blob, url, check: null, capture: live ? from.capture : null, origin: [] })
     try {
+      // where an upload came from, read before any crop re-encodes it
+      const origin = live ? [] : originWarnings(readPhotoOrigin(new Uint8Array(await blob.arrayBuffer())), from.fileName)
       const face = await checkStill(blob).catch(() => null)
       if (face?.cropped) {
         URL.revokeObjectURL(url)
@@ -153,16 +180,17 @@ export function Analyze() {
         blob = face.blob
       }
       const check = await checkImage(blob)
-      setPhase({ kind: 'preview', blob, url, check, face })
+      const capture = live ? from.capture : uploadConditions(face?.measure ?? null)
+      setPhase({ kind: 'preview', blob, url, check, face, capture, origin })
     } catch {
       setPhase({ kind: 'error', url, message: 'That file couldn’t be read as an image.' })
     }
   }
 
-  async function submit(blob: Blob, url: string) {
+  async function submit(blob: Blob, url: string, capture: CaptureConditions | null) {
     const requestId = newRequestId()
     setPhase({ kind: 'submitting', url, stage: 'starting', requestId })
-    const res = await window.skintwin.analysis.run({ requestId, imageBase64: await blobToBase64(blob), mimeType: blob.type })
+    const res = await window.skintwin.analysis.run({ requestId, imageBase64: await blobToBase64(blob), mimeType: blob.type, ...(capture ? { capture } : {}) })
     if (res.ok) {
       const { analysis, masks } = res.data
       setShown(analysis)
@@ -207,6 +235,11 @@ export function Analyze() {
               </>
             )}
             {photoUrl && <img src={photoUrl} alt="Your selfie preview" className="h-full w-full object-cover" />}
+            {phase.kind === 'prescan' && (
+              <div className="flex h-full items-center bg-[#1d1546]/80 p-6">
+                <PreScanChecklist onStart={() => void openCameraNow()} onCancel={() => setPhase({ kind: 'idle' })} />
+              </div>
+            )}
             {phase.kind === 'idle' && !photoUrl && (
               <div className="flex h-full flex-col items-center justify-center gap-3 text-ink-soft">
                 <ScanFace className="h-20 w-20 text-lilac-200/80" />
@@ -233,6 +266,7 @@ export function Analyze() {
             <p aria-live="polite" className="pointer-events-none absolute inset-x-4 bottom-[4%] text-center text-[13.5px] font-semibold text-white [text-shadow:0_1px_6px_rgb(0_0_0/0.7)]">
               {guide.status === 'loading' ? 'Starting the face guide…'
                 : guide.status === 'unavailable' ? 'Move closer until your face fills the oval'
+                : effectsOn ? 'Turn off the video effect first'
                 : guideOk ? 'Perfect — hold still…'
                 : (issue?.hint ?? 'Bring your face into the oval')}
             </p>
@@ -249,6 +283,8 @@ export function Analyze() {
           )}
         </div>
 
+        {phase.kind === 'camera' && session && <EffectsNotice effects={session.effects} studioLightUnknown={session.studioLightUnknown} />}
+        {phase.kind === 'camera' && smoothed && <p className="rounded-2xl bg-amber-300/10 p-3 text-[13px] text-amber-100">{smoothed}</p>}
         {phase.kind === 'preview' && phase.face?.cropped && (
           <p className="flex items-center gap-2 text-[13px] text-lilac-200">
             <Crop className="h-4 w-4 shrink-0" /> Cropped around your face so it fills the frame, as YouCam needs.
@@ -268,7 +304,7 @@ export function Analyze() {
             onChange={(e) => {
               const f = e.target.files?.[0]
               e.target.value = ''
-              if (f) void preview(f)
+              if (f) void preview(f, { fileName: f.name })
             }}
           />
           {phase.kind === 'camera' ? (
@@ -298,7 +334,7 @@ export function Analyze() {
               <Button onClick={() => setPhase({ kind: 'idle' })}>
                 <RefreshCcw className="h-4 w-4" /> Retake
               </Button>
-              <Button variant="primary" size="lg" disabled={!configured || !phase.check || /^image\/(jpeg|png)$/.test(phase.blob.type) === false} onClick={() => submit(phase.blob, phase.url)}>
+              <Button variant="primary" size="lg" disabled={!configured || !phase.check || /^image\/(jpeg|png)$/.test(phase.blob.type) === false} onClick={() => submit(phase.blob, phase.url, phase.capture)}>
                 <Sparkles className="h-4 w-4" /> {!providers?.youcam.configured ? 'Run mock analysis (dev)' : previewIssues(phase).length ? 'Analyze anyway' : 'Analyze with YouCam'}
               </Button>
             </>
@@ -357,7 +393,8 @@ function previewIssues(p: Phase): string[] {
   const face = p.face ? p.face.checks.filter((c) => !c.ok && c.hint).map((c) => c.hint) : []
   // With face checks available, they replace the whole-photo brightness guess.
   const basic = p.face ? p.check.issues.filter((i) => !/dark|overexposed/i.test(i)) : p.check.issues
-  return [...basic, ...face]
+  const smoothed = smoothingWarning(p.capture?.skinDetail ?? null)
+  return [...basic, ...face, ...p.origin, ...(smoothed ? [smoothed] : [])]
 }
 
 function CheckList({ items }: { items: [string, boolean][] }) {

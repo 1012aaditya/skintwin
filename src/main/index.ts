@@ -8,7 +8,7 @@ import type { AskRequest, AskResponse, ProviderStatus, Result } from '@shared/as
 import { lassoBounds, type Point } from '@shared/circle'
 import type { AnalysisMask, AnalysisRun } from '@shared/models'
 import { splitIngredientText } from '@shared/ingredients'
-import { CORNERS, type Corner } from '@shared/models'
+import { CaptureConditionsSchema, CORNERS, type Corner } from '@shared/models'
 import { MutationError, MutationSchema } from '@shared/mutations'
 import type { BridgeMessage } from '@shared/protocol'
 import { loadConfig } from './config'
@@ -508,7 +508,7 @@ function registerIpc() {
     demoCatalog: config.demoCatalog
   }))
 
-  ipcMain.handle('analysis:run', async (e, req: { requestId: string; imageBase64: string; mimeType: string }): Promise<Result<AnalysisRun>> => {
+  ipcMain.handle('analysis:run', async (e, req: { requestId: string; imageBase64: string; mimeType: string; capture?: unknown }): Promise<Result<AnalysisRun>> => {
     if (!analysisProvider) return fail('Skin analysis isn’t configured. Add YOUCAM_API_KEY to your .env file.', 'not_configured')
     if (typeof req?.imageBase64 !== 'string' || !/^image\/(jpeg|png)$/.test(req.mimeType)) return fail('Use a JPG or PNG image.', 'invalid_type')
     if (inflight.has(req.requestId)) return fail('Analysis already running.', 'duplicate')
@@ -516,9 +516,12 @@ function registerIpc() {
     inflight.set(req.requestId, ctrl)
     try {
       const image = Buffer.from(req.imageBase64, 'base64')
-      const { analysis: result, masks: links } = await analysisProvider.analyze(image, req.mimeType, ctrl.signal, (stage) =>
+      const { analysis: raw, masks: links } = await analysisProvider.analyze(image, req.mimeType, ctrl.signal, (stage) =>
         e.sender.send('analysis:progress', { requestId: req.requestId, stage })
       )
+      // How the photo was taken (light, camera, effects) — numbers and names only, validated.
+      const capture = CaptureConditionsSchema.safeParse(req.capture)
+      const result = capture.success ? { ...raw, capture: capture.data } : raw
       if (store.get().settings.privacy.storeAnalysisHistory) store.update((db) => db.analyses.unshift(result))
       console.info(`[analysis] ${analysisProvider.name} ok: ${result.metrics.length} metrics, masks for ${links.length}`)
       const masks = await downloadMasks(links, ctrl.signal).catch((err) => {
