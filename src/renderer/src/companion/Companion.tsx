@@ -131,11 +131,15 @@ export function Companion() {
     if (ctx.state === 'responding' && ctx.response && spokenFor.current !== ctx.response.requestId) {
       spokenFor.current = ctx.response.requestId
       // Spoken: just the bottom line. The full answer is on screen under Details.
-      void speaker.speak(ctx.response.reply.summary || ctx.response.reply.answer)
+      if (!privacyRef.current) void speaker.speak(ctx.response.reply.summary || ctx.response.reply.answer)
     }
   }, [ctx.state, ctx.response, speaker])
 
   const island = snap?.settings.companion.style === 'island'
+  // Privacy mode: nothing about the user's skin is shown in the pill or spoken aloud.
+  const privacy = !!snap?.settings.companion.privacyMode
+  const privacyRef = useRef(privacy)
+  privacyRef.current = privacy
   // Island: a fresh answer stays in the pill as a one-line verdict; the panel opens only on
   // Details — unless the question was asked from the open panel, then it answers there.
   const [details, setDetails] = useState(false)
@@ -145,6 +149,10 @@ export function Companion() {
   // Stable, so the island's auto-dismiss timer isn't restarted on every render.
   const stopSpeaking = useRef(speaker.stop)
   stopSpeaking.current = speaker.stop
+  // switching Privacy mode on mid-sentence stops the voice too
+  useEffect(() => {
+    if (privacy) stopSpeaking.current()
+  }, [privacy])
   const dismissResult = useCallback(() => {
     stopSpeaking.current()
     dispatch({ type: 'RESET' })
@@ -182,7 +190,7 @@ export function Companion() {
       setScanDetails(false)
       setScan({ kind: 'done', analysis: res.data.analysis, masks: res.data.masks, url: now.url })
       const analyses = (await window.skintwin.db.get()).analyses
-      void speaker.speak(scanSummary(res.data.analysis, analyses).line)
+      if (!privacyRef.current) void speaker.speak(scanSummary(res.data.analysis, analyses).line)
     } else if (res.code === 'cancelled') setScan({ kind: 'idle' })
     else setScan({ kind: 'error', message: res.error })
   }, [setScan, speaker])
@@ -347,6 +355,7 @@ export function Companion() {
                 onSkinCancel={cancelScan}
                 onSkinDetails={showScanDetails}
                 onSkinDismiss={dismissScan}
+                privacy={privacy}
                 onSend={() => void finishListening()}
                 onCancel={cancel}
                 onMenu={() => void window.skintwin.companion.menu({ hasProduct: !!ctx.productId })}

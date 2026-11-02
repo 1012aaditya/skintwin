@@ -92,7 +92,8 @@ export const MutationSchema = z.discriminatedUnion('type', [
             shortcut: z.string().max(60),
             voiceShortcut: z.string().max(60),
             corner: z.enum(CORNERS),
-            style: z.enum(COMPANION_STYLES)
+            style: z.enum(COMPANION_STYLES),
+            privacyMode: z.boolean()
           })
           .partial(),
         privacy: SettingsSchema.shape.privacy.partial()

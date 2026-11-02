@@ -29,10 +29,15 @@ describe('companion settings', () => {
     const old = JSON.parse(JSON.stringify(fresh()))
     old.settings.companion = { launchOnStartup: true, alwaysOnTop: false }
     const parsed = DatabaseSchema.parse(old)
-    expect(parsed.settings.companion).toEqual({ launchOnStartup: true, alwaysOnTop: false, shortcut: 'Alt+Space', voiceShortcut: 'Alt+Shift+Space', corner: 'bottom-right', style: 'island' })
+    expect(parsed.settings.companion).toEqual({ launchOnStartup: true, alwaysOnTop: false, shortcut: 'Alt+Space', voiceShortcut: 'Alt+Shift+Space', corner: 'bottom-right', style: 'island', privacyMode: false })
   })
   it('a partial patch changes only what it names', () => {
     const db = run(fresh(), { type: 'settings.update', patch: { companion: { shortcut: 'Command+Shift+K' } } }, { type: 'settings.update', patch: { companion: { corner: 'top-left' } } })
     expect(db.settings.companion).toMatchObject({ shortcut: 'Command+Shift+K', voiceShortcut: 'Alt+Shift+Space', corner: 'top-left', alwaysOnTop: true })
+  })
+  it('privacy mode toggles on its own and is off by default', () => {
+    expect(fresh().settings.companion.privacyMode).toBe(false)
+    const db = run(fresh(), { type: 'settings.update', patch: { companion: { shortcut: 'Command+Shift+K' } } }, { type: 'settings.update', patch: { companion: { privacyMode: true } } })
+    expect(db.settings.companion).toMatchObject({ privacyMode: true, shortcut: 'Command+Shift+K', style: 'island' })
   })
 })

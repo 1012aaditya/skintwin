@@ -168,6 +168,13 @@ function CompanionSettings() {
           <p className="mt-2 text-xs text-ink-faint">You can also drag the orb — it snaps to the nearest corner.</p>
         </div>
       )}
+      <Toggle
+        checked={c.privacyMode}
+        onChange={(x) => set({ privacyMode: x })}
+        label="Privacy mode"
+        description="The island shows only a dot — no verdicts, scores or skin details — and answers aren’t read aloud. Handy while presenting. Shortcut: ⌥⇧P."
+      />
+      <p className="-mt-2 text-xs text-ink-faint">SkinTwin also asks macOS to keep the companion out of screen sharing and recordings. Some apps’ newer capture methods may still show it, so use Privacy mode when it matters.</p>
       <Toggle checked={c.launchOnStartup} onChange={(x) => set({ launchOnStartup: x })} label="Show companion when SkinTwin starts" />
       {c.style === 'orb' && <Toggle checked={c.alwaysOnTop} onChange={(x) => window.skintwin.companion.setPinned(x)} label="Keep companion above other windows" />}
     </Card>

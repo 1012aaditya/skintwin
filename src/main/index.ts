@@ -214,6 +214,9 @@ function createCompanionWindow(): BrowserWindow {
     webPreferences: webPreferences()
   })
   if (process.platform === 'darwin') companionWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true })
+  // Keep skin verdicts out of screen sharing and recordings (Meet, Zoom…); the user still sees it.
+  // Newer macOS capture APIs may ignore this, so Privacy mode exists as a manual fallback.
+  companionWindow.setContentProtection(true)
   applyCompanionLevel()
   hardenWindow(companionWindow)
   companionWindow.on('close', (e) => {
@@ -289,6 +292,9 @@ async function handleBridgeMessage(msg: BridgeMessage): Promise<{ productId?: st
 // ---------- Circle a product ----------
 
 const CIRCLE_SHORTCUT = 'Alt+Shift+C'
+const PRIVACY_SHORTCUT = 'Alt+Shift+P'
+const privacyOn = () => store.get().settings.companion.privacyMode
+const togglePrivacy = () => store.mutate({ type: 'settings.update', patch: { companion: { privacyMode: !privacyOn() } } })
 const SCREEN_SETTINGS_URL = 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture'
 let circleDisplay: Electron.Display | null = null
 let companionBeforeCircle = false
@@ -692,6 +698,7 @@ function registerIpc() {
       ...(opts?.hasProduct ? [{ label: 'Quick actions for this product', click: cmd({ type: 'menu', action: 'quick-actions' }) }] : []),
       { label: 'My skin profile', click: cmd({ type: 'menu', action: 'profile' }) },
       { type: 'separator' },
+      { label: 'Privacy mode (hide skin info)', type: 'checkbox', checked: c.privacyMode, accelerator: PRIVACY_SHORTCUT, registerAccelerator: false, click: togglePrivacy },
       ...(c.style === 'orb'
         ? [
             { label: 'Keep on top', type: 'checkbox' as const, checked: c.alwaysOnTop, click: (item: Electron.MenuItem) => {
@@ -765,7 +772,8 @@ function registerIpc() {
 
 // ---------- Shortcuts & menus ----------
 
-const shortcutKeys = () => `${store.get().settings.companion.shortcut}|${store.get().settings.companion.voiceShortcut}`
+// privacyMode is included so the menus' checkbox is rebuilt when it changes
+const shortcutKeys = () => `${store.get().settings.companion.shortcut}|${store.get().settings.companion.voiceShortcut}|${store.get().settings.companion.privacyMode}`
 
 function tryRegister(acc: string, fn: () => void): boolean {
   if (!acc) return false
@@ -788,6 +796,7 @@ function registerShortcuts() {
     voice: tryRegister(voiceShortcut, () => showCompanion({ type: 'listen' }, true))
   }
   if (!tryRegister(CIRCLE_SHORTCUT, () => void startCircle())) console.warn(`[shortcut] ${CIRCLE_SHORTCUT} is unavailable (taken by another app or invalid)`)
+  if (!tryRegister(PRIVACY_SHORTCUT, togglePrivacy)) console.warn(`[shortcut] ${PRIVACY_SHORTCUT} is unavailable (taken by another app or invalid)`)
   if (!shortcutStatus.toggle) console.warn(`[shortcut] ${shortcut} is unavailable (taken by another app or invalid)`)
   if (!shortcutStatus.voice) console.warn(`[shortcut] ${voiceShortcut} is unavailable (taken by another app or invalid)`)
 }
@@ -807,6 +816,7 @@ function setAppMenu() {
           { label: 'Show / hide companion', accelerator: shortcut || undefined, registerAccelerator: false, click: () => (companionWindow?.isVisible() ? companionWindow.hide() : showCompanion(undefined, true)) },
           { label: 'Talk to SkinTwin', accelerator: voiceShortcut || undefined, registerAccelerator: false, click: () => showCompanion({ type: 'listen' }, true) },
           { label: 'Circle a product on screen', accelerator: CIRCLE_SHORTCUT, registerAccelerator: false, click: () => void startCircle() },
+          { label: 'Privacy mode (hide skin info)', type: 'checkbox', checked: privacyOn(), accelerator: PRIVACY_SHORTCUT, registerAccelerator: false, click: togglePrivacy },
           { type: 'separator' },
           { label: 'Change shortcuts…', click: () => createMainWindow('/settings') }
         ]

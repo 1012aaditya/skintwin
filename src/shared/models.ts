@@ -335,7 +335,9 @@ export const SettingsSchema = z.object({
     shortcut: z.string().max(60).default(DEFAULT_SHORTCUTS.toggle),
     voiceShortcut: z.string().max(60).default(DEFAULT_SHORTCUTS.voice),
     corner: z.enum(CORNERS).default('bottom-right'),
-    style: z.enum(COMPANION_STYLES).default('island')
+    style: z.enum(COMPANION_STYLES).default('island'),
+    /** hide verdicts and skin details in the island, e.g. while presenting */
+    privacyMode: z.boolean().default(false)
   }),
   privacy: z.object({
     storeConversations: z.boolean(),
