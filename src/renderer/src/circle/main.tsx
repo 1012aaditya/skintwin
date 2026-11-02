@@ -5,14 +5,13 @@ import { lassoBounds } from '@shared/circle'
 import '../styles/app.css'
 
 /**
- * Full-screen overlay showing a frozen screenshot. The user draws around a product; the
- * lasso's inside lights up while the rest dims. Releasing sends the stroke to main, which
- * crops the screenshot and asks Claude what's inside. Esc or a tiny scribble cancels.
+ * A see-through layer over the live screen that turns the cursor into a pen. Nothing is
+ * dimmed or frozen — only the stroke is drawn. Releasing sends the stroke to main, which
+ * hides this layer, screenshots the screen and crops to the circle. Esc cancels.
  */
-function CircleOverlay() {
-  const [image, setImage] = useState<string | null>(null)
+function CirclePen() {
   const [drawing, setDrawing] = useState(false)
-  const [tooSmall, setTooSmall] = useState(false)
+  const [hint, setHint] = useState<string | null>('Draw a circle around a product · Esc to cancel')
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const points = useRef<Point[]>([])
   const finished = useRef(false)
@@ -24,10 +23,13 @@ function CircleOverlay() {
   }
 
   useEffect(() => {
-    void window.skintwin.circle.image().then((src) => (src ? setImage(src) : finish(null)))
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && finish(null)
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    const t = setTimeout(() => setHint(null), 2500)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      clearTimeout(t)
+    }
   }, [])
 
   const draw = () => {
@@ -44,37 +46,25 @@ function CircleOverlay() {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ctx.clearRect(0, 0, w, h)
     const pts = points.current
-    // Dim everything, leaving the lasso's inside clear.
-    ctx.beginPath()
-    ctx.rect(0, 0, w, h)
-    if (pts.length > 2) {
-      ctx.moveTo(pts[0]!.x, pts[0]!.y)
-      for (const p of pts) ctx.lineTo(p.x, p.y)
-      ctx.closePath()
-    }
-    ctx.fillStyle = 'rgba(20, 10, 60, 0.5)'
-    ctx.fill('evenodd')
     if (pts.length < 2) return
     ctx.beginPath()
     ctx.moveTo(pts[0]!.x, pts[0]!.y)
     for (const p of pts) ctx.lineTo(p.x, p.y)
     ctx.lineJoin = 'round'
     ctx.lineCap = 'round'
-    ctx.shadowColor = 'rgba(169, 139, 255, 0.9)'
-    ctx.shadowBlur = 18
+    ctx.shadowColor = 'rgba(143, 107, 255, 0.95)'
+    ctx.shadowBlur = 14
     ctx.strokeStyle = '#ddd0ff'
-    ctx.lineWidth = 4
+    ctx.lineWidth = 4.5
     ctx.stroke()
   }
-
-  useEffect(draw, [image])
 
   const onDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return
     e.currentTarget.setPointerCapture(e.pointerId)
     points.current = [{ x: e.clientX, y: e.clientY }]
     setDrawing(true)
-    setTooSmall(false)
+    setHint(null)
     draw()
   }
   const onMove = (e: React.PointerEvent) => {
@@ -90,28 +80,26 @@ function CircleOverlay() {
     if (lassoBounds(points.current, window.innerWidth, window.innerHeight)) finish(points.current)
     else {
       points.current = []
-      setTooSmall(true)
+      setHint('Draw a bigger circle around the product')
       draw()
     }
   }
 
   return (
-    <div className="fixed inset-0 cursor-crosshair overflow-hidden bg-black select-none" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp}>
-      {image && <img src={image} alt="" draggable={false} className="pointer-events-none absolute inset-0 h-full w-full" />}
+    // The faint fill isn't visible, but macOS sends clicks through fully transparent pixels.
+    <div className="fixed inset-0 cursor-crosshair bg-black/[0.01] select-none" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp}>
       <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 h-full w-full" />
-      <div className="pointer-events-none absolute inset-x-0 top-10 flex justify-center">
-        <div className="glass-strong flex items-center gap-3 rounded-full px-5 py-2.5 text-[15px] font-medium text-white shadow-2xl">
-          <span className="h-2.5 w-2.5 rounded-full bg-lilac-200 shadow-[0_0_12px_#a98bff]" />
-          {tooSmall ? 'Draw a bigger circle around the product' : drawing ? 'Let go to check it' : 'Circle a product to check it against your skin'}
-          <kbd className="rounded-md bg-white/15 px-2 py-0.5 text-[12px] font-semibold text-white/85">Esc</kbd>
+      {hint && (
+        <div className="pointer-events-none absolute inset-x-0 top-10 flex justify-center">
+          <div className="rounded-full bg-[#2b1f5e]/85 px-4 py-2 text-[13px] font-medium text-white shadow-xl backdrop-blur">{hint}</div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <CircleOverlay />
+    <CirclePen />
   </StrictMode>
 )

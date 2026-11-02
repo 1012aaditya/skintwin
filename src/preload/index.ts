@@ -34,7 +34,6 @@ const api: SkinTwinApi = {
   },
   circle: {
     start: () => ipcRenderer.invoke('circle:start'),
-    image: () => ipcRenderer.invoke('circle:image'),
     done: (r) => ipcRenderer.invoke('circle:done', r),
     openSettings: () => ipcRenderer.invoke('circle:openSettings')
   },

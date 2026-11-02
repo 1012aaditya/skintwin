@@ -48,8 +48,6 @@ export interface SkinTwinApi {
   }
   circle: {
     start(): Promise<void>
-    /** The frozen screenshot, only for the circle overlay window. */
-    image(): Promise<string | null>
     done(result: { points: { x: number; y: number }[]; width: number; height: number } | null): Promise<void>
     openSettings(): Promise<void>
   }

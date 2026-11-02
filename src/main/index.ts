@@ -246,37 +246,43 @@ async function handleBridgeMessage(msg: BridgeMessage): Promise<{ productId?: st
 
 const CIRCLE_SHORTCUT = 'Alt+Shift+C'
 const SCREEN_SETTINGS_URL = 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture'
-let circleShot: NativeImage | null = null
+let circleDisplay: Electron.Display | null = null
 let companionBeforeCircle = false
 
 const circleFailed = (kind: 'screen_denied' | 'screen_unreadable' | 'provider', message: string, requestId: string | null = null) =>
   showCompanion({ type: 'circle-failed', requestId, kind, message }, true)
 
-/** Freeze the screen under the cursor and let the user draw around a product on it. */
-async function startCircle() {
-  if (circleWindow) return
-  if (!screenReader) return circleFailed('provider', 'Circling a product needs Claude. Add ANTHROPIC_API_KEY to your .env file.')
-  const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
-  companionBeforeCircle = !!companionWindow?.isVisible()
-  companionWindow?.hide() // keep the orb out of the picture
-  await new Promise((r) => setTimeout(r, 150))
-  let shot: NativeImage | null = null
+/** Screenshot of one display, or null if it couldn't be taken. */
+async function captureDisplay(display: Electron.Display): Promise<NativeImage | null> {
   try {
     const { width, height } = display.size
     const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: Math.round(width * display.scaleFactor), height: Math.round(height * display.scaleFactor) } })
-    shot = (sources.find((s) => s.display_id === String(display.id)) ?? sources[0])?.thumbnail ?? null
+    const shot = (sources.find((s) => s.display_id === String(display.id)) ?? sources[0])?.thumbnail ?? null
+    return shot && !shot.isEmpty() ? shot : null
   } catch (err) {
     console.warn('[circle] capture failed:', (err as Error).message)
+    return null
   }
-  // Without permission macOS returns just the wallpaper, so check rather than trust the image.
-  if (process.platform === 'darwin' && systemPreferences.getMediaAccessStatus('screen') !== 'granted')
-    return circleFailed('screen_denied', 'SkinTwin needs Screen Recording permission to see what you circle.')
-  if (!shot || shot.isEmpty()) return circleFailed('screen_unreadable', 'I couldn’t capture your screen. Try again.')
+}
 
-  circleShot = shot
+/** Turn the cursor into a pen over the live screen; the screenshot is taken after the user lets go. */
+async function startCircle() {
+  if (circleWindow) return
+  if (!screenReader) return circleFailed('provider', 'Circling a product needs Claude. Add ANTHROPIC_API_KEY to your .env file.')
+  if (process.platform === 'darwin' && systemPreferences.getMediaAccessStatus('screen') !== 'granted') {
+    // Asking for a source is what makes macOS show its permission prompt the first time.
+    await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 } }).catch(() => [])
+    if (systemPreferences.getMediaAccessStatus('screen') !== 'granted')
+      return circleFailed('screen_denied', 'SkinTwin needs Screen Recording permission to see what you circle.')
+  }
+  const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
+  circleDisplay = display
+  companionBeforeCircle = !!companionWindow?.isVisible()
+  companionWindow?.hide() // keep the orb out of the picture
   circleWindow = new BrowserWindow({
     ...display.bounds,
     frame: false,
+    transparent: true,
     resizable: false,
     movable: false,
     hasShadow: false,
@@ -287,7 +293,7 @@ async function startCircle() {
     title: 'Circle a product',
     // Like the companion: a panel can sit over another app's full-screen space.
     ...(process.platform === 'darwin' ? { type: 'panel' } : {}),
-    backgroundColor: '#000000',
+    backgroundColor: '#00000000',
     webPreferences: webPreferences()
   })
   if (process.platform === 'darwin') circleWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true })
@@ -298,17 +304,8 @@ async function startCircle() {
     circleWindow?.show()
     circleWindow?.focus()
   })
-  circleWindow.on('closed', () => {
-    circleWindow = null
-    circleShot = null
-  })
+  circleWindow.on('closed', () => (circleWindow = null))
   loadPage(circleWindow, 'circle')
-}
-
-function endCircle(): NativeImage | null {
-  const shot = circleShot
-  circleWindow?.close()
-  return shot
 }
 
 /**
@@ -518,16 +515,21 @@ function registerIpc() {
   })
 
   ipcMain.handle('circle:start', () => void startCircle())
-  ipcMain.handle('circle:image', (e) => (circleShot && e.sender === circleWindow?.webContents ? `data:image/jpeg;base64,${circleShot.toJPEG(90).toString('base64')}` : null))
-  ipcMain.handle('circle:done', (e, raw: { points: Point[]; width: number; height: number } | null) => {
+  ipcMain.handle('circle:done', async (e, raw: { points: Point[]; width: number; height: number } | null) => {
     if (!circleWindow || e.sender !== circleWindow.webContents) return
-    const shot = endCircle()
+    const display = circleDisplay
+    // Hide the pen stroke before taking the picture, so only the page itself is sent.
+    circleWindow.setOpacity(0)
+    circleWindow.close()
     const valid = raw && Array.isArray(raw.points) && raw.width > 0 && raw.height > 0
     const box = valid ? lassoBounds(raw.points.slice(0, 5000), raw.width, raw.height) : null
-    if (!shot || !box) {
+    if (!display || !box) {
       if (companionBeforeCircle) companionWindow?.showInactive()
       return
     }
+    await new Promise((r) => setTimeout(r, 120)) // let the window actually leave the screen
+    const shot = await captureDisplay(display)
+    if (!shot) return circleFailed('screen_unreadable', 'I couldn’t capture your screen. Try again.')
     const size = shot.getSize()
     const sx = size.width / raw!.width
     const sy = size.height / raw!.height
