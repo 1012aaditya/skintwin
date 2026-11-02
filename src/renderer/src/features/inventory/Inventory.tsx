@@ -1,6 +1,7 @@
 import { AlertTriangle, Archive, Box, CheckCircle2, History, Hourglass, MoreHorizontal, Plus, Search, ShoppingCart, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { INVENTORY_STATUS, label, type InventoryItem, type InventoryStatus, type Product } from '@shared/models'
+import { effectiveExpiry, PAO_GUIDANCE, TYPICAL_PAO } from '@shared/inventory'
 import { alternativesFor } from '@shared/scoring'
 import { MatchBadge, ProductArt, ProductPicker } from '@renderer/components/products'
 import { ReactionToggle, SuspectList } from '@renderer/components/reactions'
@@ -19,8 +20,9 @@ const STATUS_TONE: Record<InventoryStatus, 'success' | 'warn' | 'danger' | 'neut
   archived: 'neutral'
 }
 
+/** Past its use-by date, or past opened date + period after opening. */
 function isExpired(i: InventoryItem) {
-  const d = daysUntil(i.expiresAt)
+  const d = daysUntil(effectiveExpiry(i)?.at ?? null)
   return d != null && d < 0
 }
 
@@ -139,8 +141,9 @@ function Stat({ icon, value, label: text, tone }: { icon: React.ReactNode; value
 }
 
 function InventoryCard({ item, product, onEdit }: { item: InventoryItem; product: Product; onEdit: () => void }) {
-  const expired = isExpired(item)
-  const days = daysUntil(item.expiresAt)
+  const exp = effectiveExpiry(item)
+  const days = daysUntil(exp?.at ?? null)
+  const expired = days != null && days < 0
   const pct = item.remainingPct
   return (
     <div className={cn('glass rounded-[24px] p-4', item.status === 'running_low' && 'border-amber-300/50 shadow-[0_0_30px_rgb(251_191_36/0.18)]', expired && 'border-rose-300/50 shadow-[0_0_30px_rgb(251_113_148/0.2)]')}>
@@ -168,7 +171,7 @@ function InventoryCard({ item, product, onEdit }: { item: InventoryItem; product
           <>
             <Bar value={pct} tone={pct <= 20 ? 'amber' : expired ? 'rose' : pct <= 40 ? 'lilac' : 'mint'} />
             <div className="mt-1.5 flex justify-between text-[12.5px] text-ink-soft">
-              <span>{days != null ? (days < 0 ? `Expired ${-days} days ago` : `Expires in ${days} days`) : item.openedAt ? `Opened ${formatDate(item.openedAt)}` : ' '}</span>
+              <span>{days != null ? (days < 0 ? `Expired ${-days} days ago` : `Expires in ${days} days`) + (exp?.basis === 'pao' ? ' (from opening)' : '') : item.openedAt ? `Opened ${formatDate(item.openedAt)}` : ' '}</span>
               <span title="Your estimate">~{pct}% left (your estimate)</span>
             </div>
           </>
@@ -193,6 +196,7 @@ function EditItemDialog({ item, onClose }: { item: InventoryItem; onClose: () =>
     status: item.status,
     openedAt: item.openedAt?.slice(0, 10) ?? '',
     expiresAt: item.expiresAt?.slice(0, 10) ?? '',
+    paoMonths: item.paoMonths != null ? String(item.paoMonths) : '',
     remainingPct: item.remainingPct ?? 100,
     trackRemaining: item.remainingPct != null,
     notes: item.notes
@@ -206,6 +210,7 @@ function EditItemDialog({ item, onClose }: { item: InventoryItem; onClose: () =>
           status: form.status,
           openedAt: form.openedAt ? new Date(form.openedAt).toISOString() : null,
           expiresAt: form.expiresAt ? new Date(form.expiresAt).toISOString() : null,
+          paoMonths: form.paoMonths ? Math.min(60, Math.max(1, Math.round(Number(form.paoMonths)))) : null,
           remainingPct: form.trackRemaining ? form.remainingPct : null,
           notes: form.notes
         }
@@ -231,6 +236,18 @@ function EditItemDialog({ item, onClose }: { item: InventoryItem; onClose: () =>
         </Field>
         <Field label="Use by / expiry date" hint="Check the jar icon (e.g. 12M) or the printed date.">
           <Input type="date" value={form.expiresAt} onChange={(e) => setForm({ ...form, expiresAt: e.target.value })} />
+        </Field>
+        <Field label="Use within, once opened" hint={form.expiresAt ? 'The use-by date above takes priority.' : 'From the open-jar symbol, e.g. 12M. Needs the opened date.'}>
+          <div className="flex items-center gap-2">
+            <Input type="number" min={1} max={60} placeholder="e.g. 12" value={form.paoMonths} onChange={(e) => setForm({ ...form, paoMonths: e.target.value })} aria-label="Months after opening" className="w-24" />
+            <span className="text-sm text-ink-soft">months</span>
+            {product && !form.paoMonths && (
+              <button type="button" className="text-[12.5px] text-lilac-200 underline" title={PAO_GUIDANCE} onClick={() => setForm({ ...form, paoMonths: String(TYPICAL_PAO[product.category]) })}>
+                Use typical ({TYPICAL_PAO[product.category]}M)
+              </button>
+            )}
+          </div>
+          {product && !form.paoMonths && <p className="mt-1 text-[11.5px] text-ink-faint">{PAO_GUIDANCE}</p>}
         </Field>
         <Field label={form.trackRemaining ? `Estimated remaining: ${form.remainingPct}%` : 'Estimated remaining'}>
           {form.trackRemaining ? (

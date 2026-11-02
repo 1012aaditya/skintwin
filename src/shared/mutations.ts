@@ -55,6 +55,7 @@ export const MutationSchema = z.discriminatedUnion('type', [
         openedAt: z.string().nullable(),
         expiresAt: z.string().nullable(),
         remainingPct: z.number().min(0).max(100).nullable(),
+        paoMonths: z.number().int().min(1).max(60).nullable(),
         notes: z.string().max(500)
       })
       .partial()
@@ -177,6 +178,7 @@ export function applyMutation(input: Database, op: Mutation, env: MutationEnv): 
         openedAt: op.openedAt ?? null,
         expiresAt: op.expiresAt ?? null,
         remainingPct: op.remainingPct ?? null,
+        paoMonths: null,
         notes: '',
         createdAt: now,
         updatedAt: now

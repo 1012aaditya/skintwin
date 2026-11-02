@@ -340,7 +340,16 @@ if (!(await companion.$('[data-testid="activity-list"]'))) {
 }
 await clickText(companion, 'Not today')
 await sleep(500)
-check(!(await companion.$('[data-testid="activity-ear"]')) && db().notices[`routine:${period}`]?.dismissedDay, 'Not today dismisses the routine activity for the day')
+check(!!db().notices[`routine:${period}`]?.dismissedDay, 'Not today dismisses the routine activity for the day')
+// next in the queue: the niacinamide serum marked running low (15%) earlier
+await companion.hover('[aria-label="Open SkinTwin"]')
+await companion.waitForSelector('[data-testid="notice-row"]')
+await sleep(300)
+await shot(companion, '20-island-notice')
+check(await companion.textContent('[data-testid="notice-row"]').then((t) => /running low \(~15% left, your estimate\)/.test(t)), 'a running-low product shows next in the island queue')
+await clickText(companion, 'Got it')
+await sleep(500)
+check(Object.keys(db().notices).some((k) => k.startsWith('low:')) && !(await companion.$('[data-testid="notice-row"]')), 'Got it hides the product notice for today')
 
 await main.evaluate(() => window.skintwin.db.mutate({ type: 'settings.update', patch: { companion: { style: 'orb' } } }))
 await companion.waitForSelector('[aria-label="Talk to SkinTwin"]')

@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronDown, CircleAlert, EyeOff, Keyboard, Loader2, MessageCircle, Mic, Moon, ScanFace, ScanSearch, ShieldAlert, Sun, Check, Circle, AlarmClock, Square, X } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronDown, CircleAlert, EyeOff, Keyboard, Loader2, MessageCircle, Mic, Moon, ScanFace, ScanSearch, ShieldAlert, Sun, Check, Circle, AlarmClock, CalendarX, Hourglass, Square, X } from 'lucide-react'
 import type { AssistantReply } from '@shared/assistant'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
@@ -6,7 +6,8 @@ import { Orb, type OrbMood } from '@renderer/components/Orb'
 import { ReactionChips } from '@renderer/components/reactions'
 import { cn } from '@renderer/lib/cn'
 import { mutate, useProductMap, useSnapshot } from '@renderer/lib/store'
-import { localDay, routineTitle, type Activity } from '@shared/activity'
+import { activityTitle, localDay, routineTitle, type Activity, type InventoryActivity, type RoutineActivity } from '@shared/activity'
+import { noticeText } from '@shared/inventory'
 import { handleDrop } from './drop'
 import type { CompanionContext } from './machine'
 import { VERDICTS } from './views'
@@ -157,13 +158,13 @@ export function IslandBar({
     : ctx.state === 'processing' || skinBusy ? 'processing'
     : shownResult ? (reacting && shownResult.productId ? 'react' : 'result')
     : skinResult ? 'result'
-    : activity && activityOpen ? 'activityOpen'
+    : activity?.kind === 'routine' && activityOpen ? 'activityOpen'
     : activity && hover ? 'activityHover'
     : hover ? 'hover'
     : 'idle'
   // A scan in progress shows in the pill unless the assistant is busy with something else.
   const showSkinProgress = !!skinBusy && ctx.state !== 'processing'
-  const { width, height } = islandSize(info, shape, { rows: activity?.steps.length, activity: !!activity })
+  const { width, height } = islandSize(info, shape, { rows: activity?.kind === 'routine' ? activity.steps.length : 0, activity: !!activity })
   const top = topRow(info)
   // tell main where the solid pill is, so a drag over it isn't let through to the app behind
   useEffect(() => {
@@ -214,7 +215,7 @@ export function IslandBar({
       {/* Level with the notch: only the two "ears" carry content; the middle stays empty. */}
       <button aria-label="Open SkinTwin" onClick={shownResult ? onDetails : skinResult ? onSkinDetails : onOpen} className="absolute inset-x-0 top-0 flex items-center justify-between px-3.5 outline-none" style={{ height: top }}>
         <Orb size={18} mood={mood} level={level} />
-        {shape === 'idle' && activity && !info.notch && <span className="min-w-0 flex-1 truncate px-2 text-center text-[12.5px] font-medium text-white/85">{routineTitle(activity)}</span>}
+        {shape === 'idle' && activity && !info.notch && <span className="min-w-0 flex-1 truncate px-2 text-center text-[12.5px] font-medium text-white/85">{activityTitle(activity)}</span>}
         <Ear ctx={ctx} result={shownResult} privacy={privacy} activity={shape === 'idle' ? activity : null} />
       </button>
 
@@ -223,7 +224,7 @@ export function IslandBar({
           <motion.div key={shape} className="absolute inset-x-0 flex items-center gap-2.5 px-4" style={{ top, height: height - top }} initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0, transition: { delay: 0.08, duration: 0.2 } }} exit={{ opacity: 0, transition: { duration: 0.1 } }}>
             {shape === 'activityHover' && activity && (
               <div className="flex w-full flex-col gap-2 self-start pt-1">
-                <ActivityRow activity={activity} onOpen={() => setActivityOpen(true)} />
+                {activity.kind === 'routine' ? <RoutineRow activity={activity} onOpen={() => setActivityOpen(true)} /> : <NoticeRow activity={activity} privacy={privacy} />}
                 <div className="flex gap-2.5">
                   <Action onClick={onTalk} label="Talk">
                     <Mic />
@@ -246,7 +247,7 @@ export function IslandBar({
                 <span className="line-clamp-2 min-w-0 flex-1 leading-snug" title={dropMsg ?? undefined}>{dropMsg ?? 'Drop a product photo or page link to check it'}</span>
               </div>
             )}
-            {shape === 'activityOpen' && activity && <ActivityList activity={activity} onClose={() => setActivityOpen(false)} />}
+            {shape === 'activityOpen' && activity?.kind === 'routine' && <RoutineList activity={activity} onClose={() => setActivityOpen(false)} />}
             {shape === 'hover' && (
               <>
                 <Action onClick={onTalk} label="Talk">
@@ -346,7 +347,7 @@ function SkinResultRow({ skin, onDetails, onDismiss }: { skin: Extract<IslandSki
 }
 
 /** The routine at a glance; tapping opens the steps. */
-function ActivityRow({ activity, onOpen }: { activity: Activity; onOpen: () => void }) {
+function RoutineRow({ activity, onOpen }: { activity: RoutineActivity; onOpen: () => void }) {
   const done = activity.steps.length - activity.remaining
   return (
     <button onClick={onOpen} className="flex h-9 w-full items-center gap-2.5 rounded-full bg-white/8 px-3 text-left transition-colors hover:bg-white/14" data-testid="activity-row">
@@ -362,8 +363,29 @@ function ActivityRow({ activity, onOpen }: { activity: Activity; onOpen: () => v
   )
 }
 
+/** A product that's expiring or running low: what, plus Open (in SkinTwin) and Got it (for today). */
+function NoticeRow({ activity, privacy }: { activity: InventoryActivity; privacy: boolean }) {
+  const loaded = !!useSnapshot()
+  const products = useProductMap()
+  if (!loaded) return null
+  const n = activity.notice
+  const name = privacy ? 'A product' : (products.get(n.productId)?.name ?? 'A product')
+  return (
+    <div className="flex min-h-9 w-full items-center gap-2.5 rounded-[18px] bg-white/8 py-1 pr-1 pl-3" data-testid="notice-row">
+      {n.kind === 'low' ? <Hourglass className="h-4 w-4 shrink-0 text-amber-200" /> : <CalendarX className={cn('h-4 w-4 shrink-0', n.value < 0 ? 'text-rose-300' : 'text-amber-200')} />}
+      <span className="line-clamp-2 min-w-0 flex-1 text-[12.5px] leading-tight" title={noticeText(n, name)}>{noticeText(n, name)}</span>
+      <button onClick={() => void window.skintwin.app.open('/inventory')} className="h-7 shrink-0 rounded-full px-2.5 text-[12px] text-white/80 hover:bg-white/12">
+        Open
+      </button>
+      <button onClick={() => void mutate({ type: 'notice.dismiss', key: activity.key, day: localDay(new Date()) })} className="h-7 shrink-0 rounded-full bg-white/12 px-2.5 text-[12px] hover:bg-white/20">
+        Got it
+      </button>
+    </div>
+  )
+}
+
 /** Tick each due step — the same completions the Routine screen and the timeline use. */
-function ActivityList({ activity, onClose }: { activity: Activity; onClose: () => void }) {
+function RoutineList({ activity, onClose }: { activity: RoutineActivity; onClose: () => void }) {
   const loaded = !!useSnapshot()
   const products = useProductMap()
   if (!loaded) return null
@@ -429,7 +451,11 @@ function ReactRow({ productId, onBack }: { productId: string; onBack: () => void
 
 /** Right-hand ear: what the companion is doing, at a glance. */
 function Ear({ ctx, result, privacy, activity }: { ctx: CompanionContext; result: IslandResult | null; privacy: boolean; activity: Activity | null }) {
-  if (activity && ctx.state === 'idle')
+  if (activity?.kind === 'inventory' && ctx.state === 'idle') {
+    const Icon = activity.notice.kind === 'low' ? Hourglass : CalendarX
+    return <Icon className={cn('h-3.5 w-3.5', activity.notice.kind === 'expiry' && activity.notice.value < 0 ? 'text-rose-300' : 'text-amber-200')} aria-label={activityTitle(activity)} data-testid="activity-ear" />
+  }
+  if (activity?.kind === 'routine' && ctx.state === 'idle')
     return (
       <span className="flex items-center gap-1 text-[12px] font-semibold text-amber-200" aria-label={routineTitle(activity)} data-testid="activity-ear">
         {activity.period === 'am' ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}

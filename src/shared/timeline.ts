@@ -1,5 +1,5 @@
 import type { Database, SkinAnalysis } from './models'
-import { comparable, metricDeltas, scanScore, type MetricDelta } from './skin'
+import { comparable, metricDeltas, roundDelta, scanScore, type MetricDelta } from './skin'
 
 /**
  * Everything SkinTwin knows happened to the user's skin, on one time axis: real scans,
@@ -124,7 +124,7 @@ export function sinceStarted(db: Pick<Database, 'routines' | 'inventory' | 'anal
     const lo = dayKey(before.createdAt)
     const hi = dayKey(after.createdAt)
     const alsoStarted = uses.filter((o) => o.productId !== u.productId && o.start > lo && o.start < hi).map((o) => o.productId)
-    const change = s0 != null && s1 != null ? s1 - s0 : 0
+    const change = s0 != null && s1 != null ? roundDelta(s1 - s0) : 0
     out.push({
       productId: u.productId,
       start: u.start,

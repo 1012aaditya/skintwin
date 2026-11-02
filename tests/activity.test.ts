@@ -57,7 +57,7 @@ describe('routine live activity', () => {
     const dismissed = run(db, { type: 'notice.dismiss', key: 'routine:am', day: '2026-11-02' })
     expect(routineActivity(dismissed, at(10))).toBeNull()
     expect(silenced(dismissed.notices, 'routine:am', new Date(2026, 10, 3, 8))).toBe(false) // back tomorrow
-    expect(currentActivity(dismissed, at(20))?.period).toBe('pm') // the evening is separate
+    expect(currentActivity(dismissed, at(20))).toMatchObject({ kind: 'routine', period: 'pm' }) // the evening is separate
   })
 
   it('rejects a window that ends before it starts', () => {

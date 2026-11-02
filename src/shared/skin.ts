@@ -5,6 +5,9 @@ import type { AnalysisMetric, SkinAnalysis } from './models'
  * Mock analyses are placeholders, so they are never compared against.
  */
 
+/** Score differences to one decimal, so floating-point noise (89.3 − 91.6 = −2.2999…) never shows. */
+export const roundDelta = (x: number) => Math.round(x * 10) / 10
+
 /** YouCam's overall score, or the average of its metric scores when it gives none. */
 export function scanScore(a: SkinAnalysis): { value: number | null; label: string } {
   if (a.overallScore != null) return { value: a.overallScore, label: 'Overall score' }
@@ -55,7 +58,7 @@ export function metricDeltas(current: SkinAnalysis, previous: SkinAnalysis | nul
   const before = new Map(previous.metrics.filter((m) => m.score != null).map((m) => [m.key, m.score!]))
   return current.metrics
     .filter((m) => m.score != null && before.has(m.key))
-    .map((m) => ({ key: m.key, label: m.label, before: before.get(m.key)!, after: m.score!, delta: m.score! - before.get(m.key)! }))
+    .map((m) => ({ key: m.key, label: m.label, before: before.get(m.key)!, after: m.score!, delta: roundDelta(m.score! - before.get(m.key)!) }))
     .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta) || a.label.localeCompare(b.label))
 }
 
@@ -78,7 +81,7 @@ export function scanSummary(current: SkinAnalysis, analyses: SkinAnalysis[]): Sc
   const t = Date.parse(current.createdAt)
   const hadEarlier = analyses.some((a) => a.id !== current.id && !a.isMock && Date.parse(a.createdAt) < t)
   const prevScore = prev ? scanScore(prev).value : null
-  const change = score != null && prevScore != null ? score - prevScore : null
+  const change = score != null && prevScore != null ? roundDelta(score - prevScore) : null
   const parts = [
     current.isMock ? 'Mock result, not real' : null,
     score != null ? `Skin score ${score}` : 'No overall score',

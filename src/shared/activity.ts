@@ -1,20 +1,14 @@
 import { todaysSteps, type DueStep } from './home'
+import { inventoryNotices, type InventoryNotice } from './inventory'
 import type { Database, RoutinePeriod } from './models'
+import { localDay, silenced } from './notices'
+
+export { localDay, silenced }
 
 /**
  * Live activities: small, timely notices the island shows one at a time. This file decides
  * which one (if any) is shown now; the island only draws it. Pure, so it's tested.
  */
-
-const pad = (n: number) => String(n).padStart(2, '0')
-export const localDay = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-
-/** Snoozed or dismissed for today? */
-export function silenced(notices: Database['notices'], key: string, now: Date): boolean {
-  const n = notices[key]
-  if (!n) return false
-  return n.dismissedDay === localDay(now) || (!!n.snoozedUntil && Date.parse(n.snoozedUntil) > now.getTime())
-}
 
 export interface RoutineActivity {
   kind: 'routine'
@@ -46,12 +40,28 @@ export function routineActivity(db: Pick<Database, 'routines' | 'settings' | 'no
   return { kind: 'routine', key, period, steps, remaining }
 }
 
-/** Every kind of live activity, highest priority first. More kinds join this list later. */
-export type Activity = RoutineActivity
+/** Something about a product the user owns: expired, expiring soon, or running low. */
+export interface InventoryActivity {
+  kind: 'inventory'
+  key: string
+  notice: InventoryNotice
+}
 
-export function currentActivity(db: Pick<Database, 'routines' | 'settings' | 'notices'>, now: Date): Activity | null {
-  const candidates: (Activity | null)[] = [routineActivity(db, now)]
+/** Every kind of live activity. */
+export type Activity = RoutineActivity | InventoryActivity
+
+/**
+ * One notice at a time, by priority: the routine (it only shows in its own hours), then the
+ * most urgent product notice. Snoozed or dismissed ones never come back the same day.
+ */
+export function currentActivity(db: Pick<Database, 'routines' | 'settings' | 'notices' | 'inventory'>, now: Date): Activity | null {
+  const product = inventoryNotices(db, now)[0]
+  const candidates: (Activity | null)[] = [routineActivity(db, now), product ? { kind: 'inventory', key: product.key, notice: product } : null]
   return candidates.find((a): a is Activity => !!a) ?? null
 }
 
 export const routineTitle = (a: RoutineActivity) => `${a.period === 'am' ? 'AM' : 'PM'} routine · ${a.remaining} step${a.remaining === 1 ? '' : 's'}`
+
+/** A short, name-free title (safe in Privacy mode and on the idle pill). */
+export const activityTitle = (a: Activity) =>
+  a.kind === 'routine' ? routineTitle(a) : a.notice.kind === 'low' ? 'Running low' : a.notice.value < 0 ? 'Product expired' : 'Expiring soon'

@@ -223,6 +223,8 @@ export const InventoryItemSchema = z.object({
   openedAt: z.string().nullable(),
   expiresAt: z.string().nullable(),
   remainingPct: z.number().min(0).max(100).nullable(), // user estimate, never measured
+  /** period after opening in months, as the user read it off the jar (e.g. 12M); null if unknown */
+  paoMonths: z.number().int().min(1).max(60).nullable().default(null),
   notes: z.string().max(500),
   createdAt: z.string(),
   updatedAt: z.string()

@@ -62,4 +62,13 @@ describe('skin scan summary', () => {
     expect(previousRealScan([b, effect, dim, a], b)?.id).toBe('a')
     expect(scanSummary(b, [b, dim]).line).toMatch(/no earlier scan in similar light to compare$/)
   })
+
+  it('rounds changes so floating-point noise never shows', () => {
+    const a = scan('a', 1, {}, { overallScore: 91.6 })
+    const b = scan('b', 2, { moisture: 70.1 }, { overallScore: 89.3 })
+    const s = scanSummary(b, [b, a])
+    expect(s.change).toBe(-2.3)
+    expect(s.line).toBe('Skin score 89.3 · lowest moisture 70.1 · down 2.3 since 1 Oct')
+    expect(metricDeltas(scan('c', 3, { moisture: 0.3 }), scan('d', 1, { moisture: 0.1 }))[0]!.delta).toBe(0.2)
+  })
 })
