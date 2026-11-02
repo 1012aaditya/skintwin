@@ -45,9 +45,10 @@ export function createEmptyDatabase(opts: { demoCatalog: boolean }): Database {
     partners: opts.demoCatalog ? structuredClone(DEMO_PARTNERS) : [],
     listings: opts.demoCatalog ? structuredClone(DEMO_LISTINGS) : [],
     reactions: [],
+    notices: {},
     settings: {
       voice: { responseEnabled: true, voiceName: null, rate: 1, activation: 'click_to_toggle', textOnly: false },
-      companion: { launchOnStartup: true, alwaysOnTop: true, shortcut: DEFAULT_SHORTCUTS.toggle, voiceShortcut: DEFAULT_SHORTCUTS.voice, corner: 'bottom-right', style: 'island', privacyMode: false },
+      companion: { launchOnStartup: true, alwaysOnTop: true, shortcut: DEFAULT_SHORTCUTS.toggle, voiceShortcut: DEFAULT_SHORTCUTS.voice, corner: 'bottom-right', style: 'island', privacyMode: false, routineReminders: true, amWindow: [6, 11], pmWindow: [19, 24] },
       privacy: { storeConversations: true, storeAnalysisHistory: true, sendProfileToAssistant: true }
     },
     detected: null,

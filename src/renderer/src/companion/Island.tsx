@@ -1,11 +1,12 @@
-import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronDown, CircleAlert, EyeOff, Keyboard, Loader2, MessageCircle, Mic, ScanFace, ScanSearch, ShieldAlert, Square, X } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronDown, CircleAlert, EyeOff, Keyboard, Loader2, MessageCircle, Mic, Moon, ScanFace, ScanSearch, ShieldAlert, Sun, Check, Circle, AlarmClock, Square, X } from 'lucide-react'
 import type { AssistantReply } from '@shared/assistant'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Orb, type OrbMood } from '@renderer/components/Orb'
 import { ReactionChips } from '@renderer/components/reactions'
 import { cn } from '@renderer/lib/cn'
-import { useSnapshot } from '@renderer/lib/store'
+import { mutate, useProductMap, useSnapshot } from '@renderer/lib/store'
+import { localDay, routineTitle, type Activity } from '@shared/activity'
 import type { CompanionContext } from './machine'
 import { VERDICTS } from './views'
 
@@ -23,7 +24,7 @@ export interface IslandInfo {
 }
 export const NO_NOTCH: IslandInfo = { notch: false, barHeight: 0, notchWidth: 0 }
 
-type Shape = 'idle' | 'hover' | 'listening' | 'processing' | 'result' | 'react'
+type Shape = 'idle' | 'hover' | 'listening' | 'processing' | 'result' | 'react' | 'activityHover' | 'activityOpen'
 
 /** A fresh answer shown in the pill: the verdict and one line, with the full answer a tap away. */
 export interface IslandResult {
@@ -42,9 +43,16 @@ export const topRow = (info: IslandInfo) => (info.notch ? info.barHeight : 34)
 /** Gap above a floating pill on Macs without a notch. */
 export const topGap = (info: IslandInfo) => (info.notch ? 0 : 6)
 
-export function islandSize(info: IslandInfo, shape: Shape) {
+const ACTIVITY_ROW = 44
+const STEP_ROW = 36
+
+/** `rows` = steps listed when a live activity is open. */
+export function islandSize(info: IslandInfo, shape: Shape, opts: { rows?: number; activity?: boolean } = {}) {
   const top = topRow(info)
-  if (shape === 'idle') return { width: info.notch ? info.notchWidth + 104 : 200, height: top }
+  // without a notch the idle pill has room to say what's due; with one, only the ears do
+  if (shape === 'idle') return { width: info.notch ? info.notchWidth + 104 : opts.activity ? 250 : 200, height: top }
+  if (shape === 'activityHover') return { width: 420, height: top + ACTIVITY_ROW + 52 }
+  if (shape === 'activityOpen') return { width: 420, height: top + ACTIVITY_ROW + (opts.rows ?? 0) * STEP_ROW + 50 }
   if (shape === 'hover') return { width: 420, height: top + 54 }
   if (shape === 'listening') return { width: 380, height: top + 58 }
   if (shape === 'result') return { width: 420, height: top + 78 }
@@ -82,6 +90,7 @@ export function IslandBar({
   onSkinDetails,
   onSkinDismiss,
   privacy,
+  activity,
   onSend,
   onCancel,
   onMenu,
@@ -105,6 +114,8 @@ export function IslandBar({
   onSkinDismiss: () => void
   /** Privacy mode: the pill never shows verdicts or skin details, e.g. while presenting */
   privacy: boolean
+  /** a live activity (e.g. the due routine) shown while nothing else is happening */
+  activity: Activity | null
   onSend: () => void
   onCancel: () => void
   onMenu: () => void
@@ -114,6 +125,9 @@ export function IslandBar({
 }) {
   const [hover, setHover] = useState(false)
   const [reacting, setReacting] = useState(false)
+  const [activityOpen, setActivityOpen] = useState(false)
+  // a different activity (or none) starts closed
+  useEffect(() => setActivityOpen(false), [activity?.key])
   // a new answer (the result object itself is rebuilt on every render) closes the reaction row
   useEffect(() => setReacting(false), [result?.summary, result?.productId])
   const leaveTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
@@ -132,11 +146,13 @@ export function IslandBar({
     : ctx.state === 'processing' || skinBusy ? 'processing'
     : shownResult ? (reacting && shownResult.productId ? 'react' : 'result')
     : skinResult ? 'result'
+    : activity && activityOpen ? 'activityOpen'
+    : activity && hover ? 'activityHover'
     : hover ? 'hover'
     : 'idle'
   // A scan in progress shows in the pill unless the assistant is busy with something else.
   const showSkinProgress = !!skinBusy && ctx.state !== 'processing'
-  const { width, height } = islandSize(info, shape)
+  const { width, height } = islandSize(info, shape, { rows: activity?.steps.length, activity: !!activity })
   const top = topRow(info)
 
   return (
@@ -164,12 +180,33 @@ export function IslandBar({
       {/* Level with the notch: only the two "ears" carry content; the middle stays empty. */}
       <button aria-label="Open SkinTwin" onClick={shownResult ? onDetails : skinResult ? onSkinDetails : onOpen} className="absolute inset-x-0 top-0 flex items-center justify-between px-3.5 outline-none" style={{ height: top }}>
         <Orb size={18} mood={mood} level={level} />
-        <Ear ctx={ctx} result={shownResult} privacy={privacy} />
+        {shape === 'idle' && activity && !info.notch && <span className="min-w-0 flex-1 truncate px-2 text-center text-[12.5px] font-medium text-white/85">{routineTitle(activity)}</span>}
+        <Ear ctx={ctx} result={shownResult} privacy={privacy} activity={shape === 'idle' ? activity : null} />
       </button>
 
       <AnimatePresence initial={false} mode="popLayout">
         {shape !== 'idle' && (
           <motion.div key={shape} className="absolute inset-x-0 flex items-center gap-2.5 px-4" style={{ top, height: height - top }} initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0, transition: { delay: 0.08, duration: 0.2 } }} exit={{ opacity: 0, transition: { duration: 0.1 } }}>
+            {shape === 'activityHover' && activity && (
+              <div className="flex w-full flex-col gap-2 self-start pt-1">
+                <ActivityRow activity={activity} onOpen={() => setActivityOpen(true)} />
+                <div className="flex gap-2.5">
+                  <Action onClick={onTalk} label="Talk">
+                    <Mic />
+                  </Action>
+                  <Action onClick={onType} label="Ask">
+                    <Keyboard />
+                  </Action>
+                  <Action onClick={onCircle} label="Circle" accent>
+                    <ScanSearch />
+                  </Action>
+                  <Action onClick={onSkin} label="Skin">
+                    <ScanFace />
+                  </Action>
+                </div>
+              </div>
+            )}
+            {shape === 'activityOpen' && activity && <ActivityList activity={activity} onClose={() => setActivityOpen(false)} />}
             {shape === 'hover' && (
               <>
                 <Action onClick={onTalk} label="Talk">
@@ -268,6 +305,61 @@ function SkinResultRow({ skin, onDetails, onDismiss }: { skin: Extract<IslandSki
   )
 }
 
+/** The routine at a glance; tapping opens the steps. */
+function ActivityRow({ activity, onOpen }: { activity: Activity; onOpen: () => void }) {
+  const done = activity.steps.length - activity.remaining
+  return (
+    <button onClick={onOpen} className="flex h-9 w-full items-center gap-2.5 rounded-full bg-white/8 px-3 text-left transition-colors hover:bg-white/14" data-testid="activity-row">
+      {activity.period === 'am' ? <Sun className="h-4 w-4 shrink-0 text-amber-200" /> : <Moon className="h-4 w-4 shrink-0 text-amber-200" />}
+      <span className="flex-1 text-[13.5px] font-medium">{routineTitle(activity)}</span>
+      <span className="flex gap-1" aria-hidden>
+        {activity.steps.map((s, i) => (
+          <span key={s.step.id} className={cn('h-1.5 w-1.5 rounded-full', i < done ? 'bg-mint-300' : 'bg-white/30')} />
+        ))}
+      </span>
+      <ChevronDown className="h-3.5 w-3.5 text-white/60" />
+    </button>
+  )
+}
+
+/** Tick each due step — the same completions the Routine screen and the timeline use. */
+function ActivityList({ activity, onClose }: { activity: Activity; onClose: () => void }) {
+  const loaded = !!useSnapshot()
+  const products = useProductMap()
+  if (!loaded) return null
+  const today = localDay(new Date())
+  return (
+    <div className="flex w-full flex-col gap-1 self-start pt-1.5" data-testid="activity-list">
+      <div className="flex items-center gap-2 px-1 pb-1">
+        {activity.period === 'am' ? <Sun className="h-4 w-4 text-amber-200" /> : <Moon className="h-4 w-4 text-amber-200" />}
+        <p className="flex-1 text-[13.5px] font-semibold">{routineTitle(activity)}</p>
+        <Round label="Close" onClick={onClose}>
+          <ChevronDown className="rotate-180" />
+        </Round>
+      </div>
+      {activity.steps.map(({ step, done, period }) => (
+        <button
+          key={step.id}
+          onClick={() => void mutate({ type: 'routine.toggleComplete', period, stepId: step.id, date: today })}
+          className="flex h-8 items-center gap-2.5 rounded-xl px-2 text-left transition-colors hover:bg-white/10"
+          aria-pressed={done}
+        >
+          {done ? <Check className="h-4 w-4 shrink-0 text-mint-300" strokeWidth={3} /> : <Circle className="h-4 w-4 shrink-0 text-white/50" />}
+          <span className={cn('min-w-0 flex-1 truncate text-[13px]', done && 'text-white/50 line-through')}>{products.get(step.productId)?.name ?? 'Product'}</span>
+        </button>
+      ))}
+      <div className="mt-1 flex gap-2">
+        <button onClick={() => void mutate({ type: 'notice.snooze', key: activity.key, until: new Date(Date.now() + 3_600_000).toISOString() })} className="flex h-8 flex-1 items-center justify-center gap-1.5 rounded-full bg-white/10 text-[12.5px] hover:bg-white/18">
+          <AlarmClock className="h-3.5 w-3.5" /> Snooze 1 hour
+        </button>
+        <button onClick={() => void mutate({ type: 'notice.dismiss', key: activity.key, day: today })} className="flex h-8 flex-1 items-center justify-center rounded-full bg-white/10 text-[12.5px] hover:bg-white/18">
+          Not today
+        </button>
+      </div>
+    </div>
+  )
+}
+
 /** One tap logs what the skin did; the pill folds back to the verdict a moment later. */
 function ReactRow({ productId, onBack }: { productId: string; onBack: () => void }) {
   const loaded = !!useSnapshot()
@@ -296,7 +388,14 @@ function ReactRow({ productId, onBack }: { productId: string; onBack: () => void
 }
 
 /** Right-hand ear: what the companion is doing, at a glance. */
-function Ear({ ctx, result, privacy }: { ctx: CompanionContext; result: IslandResult | null; privacy: boolean }) {
+function Ear({ ctx, result, privacy, activity }: { ctx: CompanionContext; result: IslandResult | null; privacy: boolean; activity: Activity | null }) {
+  if (activity && ctx.state === 'idle')
+    return (
+      <span className="flex items-center gap-1 text-[12px] font-semibold text-amber-200" aria-label={routineTitle(activity)} data-testid="activity-ear">
+        {activity.period === 'am' ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+        {activity.remaining}
+      </span>
+    )
   if (privacy && ctx.state !== 'listening' && ctx.state !== 'processing') return <EyeOff className="h-3.5 w-3.5 text-white/45" aria-label="Privacy mode on" data-testid="privacy-on" />
   if (result && result.aboutProduct) {
     const tone = VERDICTS[result.verdict].tone

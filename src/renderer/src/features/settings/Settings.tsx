@@ -175,9 +175,43 @@ function CompanionSettings() {
         description="The island shows only a dot — no verdicts, scores or skin details — and answers aren’t read aloud. Handy while presenting. Shortcut: ⌥⇧P."
       />
       <p className="-mt-2 text-xs text-ink-faint">SkinTwin also asks macOS to keep the companion out of screen sharing and recordings. Some apps’ newer capture methods may still show it, so use Privacy mode when it matters.</p>
+      <Toggle checked={c.routineReminders} onChange={(x) => set({ routineReminders: x })} label="Routine in the island" description="In your morning and evening hours the island shows what’s due, and you can tick steps right there." />
+      {c.routineReminders && (
+        <div className="-mt-2 flex flex-wrap gap-6 pl-1 text-sm" data-testid="routine-windows">
+          <HourRange label="Morning" value={c.amWindow} onChange={(v) => set({ amWindow: v })} />
+          <HourRange label="Evening" value={c.pmWindow} onChange={(v) => set({ pmWindow: v })} />
+        </div>
+      )}
       <Toggle checked={c.launchOnStartup} onChange={(x) => set({ launchOnStartup: x })} label="Show companion when SkinTwin starts" />
       {c.style === 'orb' && <Toggle checked={c.alwaysOnTop} onChange={(x) => window.skintwin.companion.setPinned(x)} label="Keep companion above other windows" />}
     </Card>
+  )
+}
+
+const hourLabel = (h: number) => (h === 0 || h === 24 ? 'midnight' : h === 12 ? 'noon' : h < 12 ? `${h} am` : `${h - 12} pm`)
+
+/** A from–to hour window; the end must come after the start. */
+function HourRange({ label, value, onChange }: { label: string; value: [number, number]; onChange: (v: [number, number]) => void }) {
+  const [from, to] = value
+  return (
+    <label className="flex items-center gap-2">
+      <span className="w-16 text-ink-soft">{label}</span>
+      <Select className="w-28" aria-label={`${label} from`} value={from} onChange={(e) => onChange([Number(e.target.value), Math.max(to, Number(e.target.value) + 1)])}>
+        {Array.from({ length: 24 }, (_, h) => (
+          <option key={h} value={h}>
+            {hourLabel(h)}
+          </option>
+        ))}
+      </Select>
+      <span className="text-ink-soft">to</span>
+      <Select className="w-28" aria-label={`${label} until`} value={to} onChange={(e) => onChange([from, Number(e.target.value)])}>
+        {Array.from({ length: 24 - from }, (_, i) => from + 1 + i).map((h) => (
+          <option key={h} value={h}>
+            {hourLabel(h)}
+          </option>
+        ))}
+      </Select>
+    </label>
   )
 }
 

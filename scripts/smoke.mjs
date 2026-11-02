@@ -279,6 +279,33 @@ await companion.click('[aria-label="Back to island"]')
 await companion.waitForSelector('[aria-label="Open SkinTwin"]')
 
 // The rest of the companion checks use the floating orb.
+// Routine as a live activity: windows cover the whole day so the check doesn't depend on the clock.
+await main.evaluate(() => window.skintwin.db.mutate({ type: 'settings.update', patch: { companion: { amWindow: [0, 12], pmWindow: [12, 24] } } }))
+await companion.waitForSelector('[data-testid="activity-ear"]', { timeout: 10_000 })
+await shot(companion, '20-island-activity')
+await companion.hover('[aria-label="Open SkinTwin"]')
+await companion.click('[data-testid="activity-row"]')
+await companion.waitForSelector('[data-testid="activity-list"]')
+await sleep(500)
+await shot(companion, '20-island-activity-open')
+const period = new Date().getHours() < 12 ? 'am' : 'pm'
+const before = db().routines[period].steps.filter((x) => x.completions.length).length
+await companion.click('[data-testid="activity-list"] button[aria-pressed="false"]')
+await sleep(400)
+check(db().routines[period].steps.filter((x) => x.completions.length).length === before + 1, 'ticking a step in the island writes the routine completion')
+// if that was the last step due, the activity is gone; untick it so "Not today" can be tried
+if (!(await companion.$('[data-testid="activity-list"]'))) {
+  check(true, 'the activity disappears once every due step is ticked')
+  const ticked = db().routines[period].steps.find((x) => x.completions.length)
+  await main.evaluate(([p, id, d]) => window.skintwin.db.mutate({ type: 'routine.toggleComplete', period: p, stepId: id, date: d }), [period, ticked.id, ticked.completions.at(-1)])
+  await companion.hover('[aria-label="Open SkinTwin"]')
+  await companion.click('[data-testid="activity-row"]')
+  await companion.waitForSelector('[data-testid="activity-list"]')
+}
+await clickText(companion, 'Not today')
+await sleep(500)
+check(!(await companion.$('[data-testid="activity-ear"]')) && db().notices[`routine:${period}`]?.dismissedDay, 'Not today dismisses the routine activity for the day')
+
 await main.evaluate(() => window.skintwin.db.mutate({ type: 'settings.update', patch: { companion: { style: 'orb' } } }))
 await companion.waitForSelector('[aria-label="Talk to SkinTwin"]')
 await sleep(900)

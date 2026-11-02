@@ -16,6 +16,8 @@ import {
 } from './models'
 
 const Period = z.enum(['am', 'pm'])
+const Hour = z.number().int().min(0).max(24)
+const Hours = z.tuple([Hour, Hour]).refine(([a, b]) => a < b, 'The window must end after it starts')
 
 const ManualProductInput = ProductSchema.pick({
   name: true,
@@ -93,7 +95,10 @@ export const MutationSchema = z.discriminatedUnion('type', [
             voiceShortcut: z.string().max(60),
             corner: z.enum(CORNERS),
             style: z.enum(COMPANION_STYLES),
-            privacyMode: z.boolean()
+            privacyMode: z.boolean(),
+            routineReminders: z.boolean(),
+            amWindow: Hours,
+            pmWindow: Hours
           })
           .partial(),
         privacy: SettingsSchema.shape.privacy.partial()
@@ -110,6 +115,8 @@ export const MutationSchema = z.discriminatedUnion('type', [
     at: z.iso.datetime().optional()
   }),
   z.object({ type: z.literal('reaction.delete'), id: z.string() }),
+  z.object({ type: z.literal('notice.dismiss'), key: z.string().max(80), day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }),
+  z.object({ type: z.literal('notice.snooze'), key: z.string().max(80), until: z.iso.datetime() }),
   z.object({ type: z.literal('analysis.delete'), id: z.string() }),
   z.object({ type: z.literal('analysis.deleteAll') }),
   z.object({ type: z.literal('conversations.deleteAll') }),
@@ -258,6 +265,12 @@ export function applyMutation(input: Database, op: Mutation, env: MutationEnv): 
       break
     case 'reaction.delete':
       db.reactions = db.reactions.filter((r) => r.id !== op.id)
+      break
+    case 'notice.dismiss':
+      db.notices[op.key] = { dismissedDay: op.day, snoozedUntil: null }
+      break
+    case 'notice.snooze':
+      db.notices[op.key] = { dismissedDay: db.notices[op.key]?.dismissedDay ?? null, snoozedUntil: op.until }
       break
     case 'analysis.delete':
       db.analyses = db.analyses.filter((a) => a.id !== op.id)

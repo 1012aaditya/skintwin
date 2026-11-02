@@ -337,7 +337,11 @@ export const SettingsSchema = z.object({
     corner: z.enum(CORNERS).default('bottom-right'),
     style: z.enum(COMPANION_STYLES).default('island'),
     /** hide verdicts and skin details in the island, e.g. while presenting */
-    privacyMode: z.boolean().default(false)
+    privacyMode: z.boolean().default(false),
+    /** show the due routine in the island during these hours (local, 0–24, start inclusive) */
+    routineReminders: z.boolean().default(true),
+    amWindow: z.tuple([z.number().int().min(0).max(24), z.number().int().min(0).max(24)]).default([6, 11]),
+    pmWindow: z.tuple([z.number().int().min(0).max(24), z.number().int().min(0).max(24)]).default([19, 24])
   }),
   privacy: z.object({
     storeConversations: z.boolean(),
@@ -392,6 +396,8 @@ export const DatabaseSchema = z.object({
   listings: z.array(MarketplaceListingSchema),
   // Added later: defaults keep older saved databases loading.
   reactions: z.array(ReactionSchema).default([]),
+  /** island notices the user snoozed or dismissed, by key (e.g. "routine:am") */
+  notices: z.record(z.string(), z.object({ dismissedDay: z.string().nullable(), snoozedUntil: z.string().nullable() })).default({}),
   settings: SettingsSchema,
   detected: DetectedProductSchema.nullable(),
   lastDetectionFailure: DetectionFailureSchema.nullable(),

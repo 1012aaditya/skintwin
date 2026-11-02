@@ -137,7 +137,7 @@ function cornerBounds(mode: CompanionMode, corner: Corner, display = screen.getP
 // it and the transparent rest lets clicks through.
 
 const ISLAND_WIDTH = 480
-const ISLAND_BAR_HEIGHT = 180 // pill plus room to grow (listening, progress, hover actions)
+const ISLAND_BAR_HEIGHT = 340 // pill plus room to grow (listening, progress, hover actions, an open routine)
 const ISLAND_PANEL_HEIGHT = 760
 // macOS doesn't report the notch's size; every notched MacBook's is a little under this.
 const NOTCH_WIDTH = 200

@@ -29,7 +29,7 @@ describe('companion settings', () => {
     const old = JSON.parse(JSON.stringify(fresh()))
     old.settings.companion = { launchOnStartup: true, alwaysOnTop: false }
     const parsed = DatabaseSchema.parse(old)
-    expect(parsed.settings.companion).toEqual({ launchOnStartup: true, alwaysOnTop: false, shortcut: 'Alt+Space', voiceShortcut: 'Alt+Shift+Space', corner: 'bottom-right', style: 'island', privacyMode: false })
+    expect(parsed.settings.companion).toEqual({ launchOnStartup: true, alwaysOnTop: false, shortcut: 'Alt+Space', voiceShortcut: 'Alt+Shift+Space', corner: 'bottom-right', style: 'island', privacyMode: false, routineReminders: true, amWindow: [6, 11], pmWindow: [19, 24] })
   })
   it('a partial patch changes only what it names', () => {
     const db = run(fresh(), { type: 'settings.update', patch: { companion: { shortcut: 'Command+Shift+K' } } }, { type: 'settings.update', patch: { companion: { corner: 'top-left' } } })

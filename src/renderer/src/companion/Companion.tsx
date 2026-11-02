@@ -8,6 +8,7 @@ import { cn } from '@renderer/lib/cn'
 import { blobToBase64 } from '@renderer/lib/media'
 import { newRequestId, useProviders, useSnapshot } from '@renderer/lib/store'
 import { scanSummary } from '@shared/skin'
+import { currentActivity } from '@shared/activity'
 import { preScanNeeded } from '../features/analysis/ScanNotes'
 import { SCAN_STAGE, SkinCameraView, SkinResultView, type SkinScan } from './SkinScan'
 import { IslandBar, NO_NOTCH, panelClip, pillClip, topRow, type IslandInfo } from './Island'
@@ -138,6 +139,13 @@ export function Companion() {
   const island = snap?.settings.companion.style === 'island'
   // Privacy mode: nothing about the user's skin is shown in the pill or spoken aloud.
   const privacy = !!snap?.settings.companion.privacyMode
+  // Live activities depend on the clock (routine windows, snoozes), so re-check every half minute.
+  const [clock, setClock] = useState(() => new Date())
+  useEffect(() => {
+    const t = setInterval(() => setClock(new Date()), 30_000)
+    return () => clearInterval(t)
+  }, [])
+  const activity = snap && island ? currentActivity(snap, clock) : null
   const privacyRef = useRef(privacy)
   privacyRef.current = privacy
   // Island: a fresh answer stays in the pill as a one-line verdict; the panel opens only on
@@ -356,6 +364,7 @@ export function Companion() {
                 onSkinDetails={showScanDetails}
                 onSkinDismiss={dismissScan}
                 privacy={privacy}
+                activity={activity}
                 onSend={() => void finishListening()}
                 onCancel={cancel}
                 onMenu={() => void window.skintwin.companion.menu({ hasProduct: !!ctx.productId })}
