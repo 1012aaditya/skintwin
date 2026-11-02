@@ -1,4 +1,5 @@
 import { ArrowDown, ArrowUp, CheckCircle2, ChevronDown, Circle, GripVertical, Layers, Moon, Plus, Search, Sparkles, Sun, Trash2, TriangleAlert } from 'lucide-react'
+import { isDue } from '@shared/home'
 import { Reorder, useDragControls } from 'motion/react'
 import { useEffect, useMemo, useState } from 'react'
 import { FREQUENCIES, label, type Product, type RoutinePeriod, type RoutineStep } from '@shared/models'
@@ -17,22 +18,7 @@ const ESSENTIALS = [
   { key: 'sunscreen', label: 'Sun protection (AM)', cats: ['sunscreen'] }
 ] as const
 
-/** Frequency-aware: is this step due today? */
-function dueToday(step: RoutineStep): boolean {
-  const day = new Date().getDay()
-  switch (step.frequency) {
-    case 'daily':
-      return true
-    case 'alternate_days':
-      return Math.floor(Date.now() / 86_400_000) % 2 === 0
-    case '3x_week':
-      return [1, 3, 5].includes(day)
-    case '2x_week':
-      return [2, 5].includes(day)
-    case 'weekly':
-      return day === 0
-  }
-}
+const dueToday = (step: RoutineStep) => isDue(step, new Date())
 
 export function Routine() {
   const db = useDb()

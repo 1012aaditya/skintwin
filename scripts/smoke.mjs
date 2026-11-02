@@ -82,7 +82,7 @@ await clickText(main, 'Continue')
 await shot(main, '04-onboarding-analysis')
 await clickText(main, 'I’ll do it later')
 await clickText(main, 'Open SkinTwin')
-await main.waitForSelector('text=Here when you need me')
+await main.waitForSelector('text=Your skin twin')
 await shot(main, '05-discover')
 
 const db = () => JSON.parse(readFileSync(join(userData, 'skintwin-db.json'), 'utf8'))
@@ -373,6 +373,9 @@ await shot(companion, '27-companion-voice-unconfigured')
 
 await go('/discover')
 await shot(main, '19-discover-after')
+check(await main.evaluate(() => ['home-routine', 'home-scan', 'home-working', 'home-avoid'].every((id) => document.querySelector(`[data-testid="${id}"]`))), 'home shows routine, latest scan, what’s working and what to avoid')
+check(await main.evaluate(() => document.querySelector('[data-testid="home-scan"]')?.textContent?.includes('Take your first scan')), 'home asks for a first real scan (mock scans don’t count)')
+check(await main.evaluate(() => document.querySelector('[data-testid="home-avoid"]')?.textContent?.includes('still in your routine')), 'home lists reacted-to products still in the routine')
 
 check(errors.length === 0, `no renderer errors${errors.length ? ': ' + errors.join(' | ') : ''}`)
 await app.close()
