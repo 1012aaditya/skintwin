@@ -32,7 +32,8 @@ export interface ProviderStatus {
   tts: { configured: boolean; provider: string }
   youcam: { configured: boolean; mockAllowed: boolean }
   bridge: { running: boolean; port: number; error: string | null }
-  demoCatalog: boolean
+  /** products in SkinTwin's real catalog */
+  catalogSize: number
 }
 
 export type Result<T> = { ok: true; data: T } | { ok: false; error: string; code?: string }

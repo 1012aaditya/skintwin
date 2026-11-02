@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEMO_CATALOG } from '@shared/catalog'
+import { DEMO_CATALOG } from './fixtures/demo-catalog'
 import { splitIngredientText } from '@shared/ingredients'
 import type { SkinProfile } from '@shared/models'
 import { alternativesFor, computeMatch, recommend, routineGaps } from '@shared/scoring'

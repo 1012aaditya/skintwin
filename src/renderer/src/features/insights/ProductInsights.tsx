@@ -222,7 +222,7 @@ function IngredientsTab({ product }: { product: Product }) {
     return <EmptyState icon={<FlaskConical />} title="No ingredient list" body="SkinTwin couldn’t find ingredients for this product. Check the packaging or brand page. Without them, compatibility can’t be estimated." />
   return (
     <Card className="p-5">
-      <CardHeader icon={<FlaskConical />} title={`Ingredient list (${rows.length})`} subtitle={product.source.verified ? 'Verified source' : product.source.kind === 'demo_catalog' ? 'Demo catalog — key ingredients only, not the full INCI list.' : 'As read from the source — unverified.'} />
+      <CardHeader icon={<FlaskConical />} title={`Ingredient list (${rows.length})`} subtitle={product.sources?.ingredients ? `From ${product.sources.ingredients.title}${product.sources.ingredients.licence ? ` (${product.sources.ingredients.licence})` : ''} · ${formatDate(product.sources.ingredients.fetchedAt)}` : product.source.verified ? 'Verified source' : product.source.kind === 'demo_catalog' ? 'Older entry — key ingredients only, not the full INCI list.' : 'As read from the source — unverified.'} />
       <ol className="mt-4 divide-y divide-white/8">
         {rows.map((r, i) => (
           <li key={`${r.inci}-${i}`} className="flex items-start gap-4 py-2.5">

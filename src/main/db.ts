@@ -1,7 +1,9 @@
 import { randomBytes, randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { DEMO_CATALOG, DEMO_LISTINGS, DEMO_PARTNERS } from '@shared/catalog'
+import { CATALOG } from '@shared/catalog'
+import { isSameProduct } from '@shared/scoring'
+import type { Product } from '@shared/models'
 import { DatabaseSchema, DEFAULT_SHORTCUTS, type Database, type Snapshot } from '@shared/models'
 import { applyMutation, type Mutation } from '@shared/mutations'
 
@@ -12,7 +14,8 @@ import { applyMutation, type Mutation } from '@shared/mutations'
  * companion window can never diverge.
  */
 
-export function createEmptyDatabase(opts: { demoCatalog: boolean }): Database {
+/** `catalog`: the products to start with — the real catalog in the app, a fixture in tests. */
+export function createEmptyDatabase(opts: { catalog: Product[] } = { catalog: CATALOG }): Database {
   const now = new Date().toISOString()
   return {
     version: 1,
@@ -36,14 +39,14 @@ export function createEmptyDatabase(opts: { demoCatalog: boolean }): Database {
       permissions: { pageAccess: 'unknown', microphone: 'unknown', camera: 'unknown', notifications: 'unknown' }
     },
     analyses: [],
-    products: opts.demoCatalog ? structuredClone(DEMO_CATALOG) : [],
+    products: structuredClone(opts.catalog),
     inventory: [],
     routines: { am: { period: 'am', enabled: true, steps: [] }, pm: { period: 'pm', enabled: true, steps: [] } },
     saved: [],
     conversations: [],
     actions: [],
-    partners: opts.demoCatalog ? structuredClone(DEMO_PARTNERS) : [],
-    listings: opts.demoCatalog ? structuredClone(DEMO_LISTINGS) : [],
+    partners: [],
+    listings: [],
     reactions: [],
     notices: {},
     settings: {
@@ -66,7 +69,7 @@ export class Store {
 
   constructor(
     private readonly file: string,
-    private readonly opts: { demoCatalog: boolean }
+    private readonly opts: { catalog: Product[] } = { catalog: CATALOG }
   ) {
     this.db = this.load()
   }
@@ -84,21 +87,9 @@ export class Store {
     return createEmptyDatabase(this.opts)
   }
 
-  /** Keep demo products in sync with code, or remove them when demo mode is off. */
+  /** Keep the catalog in sync with the app, and retire entries from the old demo catalog. */
   private syncCatalog(db: Database): Database {
-    const nonDemo = db.products.filter((p) => p.source.kind !== 'demo_catalog')
-    const referenced = new Set([
-      ...db.inventory.map((i) => i.productId),
-      ...db.saved.map((s) => s.productId),
-      ...db.routines.am.steps.map((s) => s.productId),
-      ...db.routines.pm.steps.map((s) => s.productId)
-    ])
-    const demo = this.opts.demoCatalog
-      ? DEMO_CATALOG
-      : DEMO_CATALOG.filter((p) => referenced.has(p.id)) // keep anything the user already relies on
-    db.products = [...structuredClone(demo), ...nonDemo]
-    db.listings = this.opts.demoCatalog ? structuredClone(DEMO_LISTINGS) : []
-    return db
+    return migrateCatalog(db, this.opts.catalog)
   }
 
   get(): Database {
@@ -150,4 +141,41 @@ export class Store {
     writeFileSync(tmp, JSON.stringify(this.db, null, 2), { mode: 0o600 })
     renameSync(tmp, this.file)
   }
+}
+
+/**
+ * Bring a saved database up to date with `catalog`. Products from the old demo catalog are
+ * replaced by the same real product where there is one (routine, inventory, reactions… follow
+ * it); demo entries the user still relies on stay, without their placeholder prices; the rest go.
+ */
+export function migrateCatalog(db: Database, catalog: Product[]): Database {
+  const others = db.products.filter((p) => p.source.kind !== 'catalog' && p.source.kind !== 'demo_catalog')
+  const demo = db.products.filter((p) => p.source.kind === 'demo_catalog')
+  const swap = new Map<string, string>()
+  for (const d of demo) {
+    const real = catalog.find((c) => isSameProduct(c, d))
+    if (real) swap.set(d.id, real.id)
+  }
+  const to = (id: string) => swap.get(id) ?? id
+  for (const i of db.inventory) i.productId = to(i.productId)
+  for (const s of db.saved) s.productId = to(s.productId)
+  for (const s of [...db.routines.am.steps, ...db.routines.pm.steps]) s.productId = to(s.productId)
+  for (const r of db.reactions) r.productId = to(r.productId)
+  for (const a of db.actions) a.productId = to(a.productId)
+  for (const c of db.conversations) for (const m of c.messages) if (m.productId) m.productId = to(m.productId)
+  if (db.detected) db.detected.productId = to(db.detected.productId)
+  const referenced = new Set([
+    ...db.inventory.map((i) => i.productId),
+    ...db.saved.map((s) => s.productId),
+    ...db.routines.am.steps.map((s) => s.productId),
+    ...db.routines.pm.steps.map((s) => s.productId),
+    ...db.reactions.map((r) => r.productId)
+  ])
+  const kept = demo
+    .filter((d) => !swap.has(d.id) && referenced.has(d.id))
+    .map((d) => ({ ...d, price: null, source: { ...d.source, label: 'From an older SkinTwin version — key ingredients only, not a full list' } }))
+  db.products = [...structuredClone(catalog), ...kept, ...others]
+  db.listings = []
+  db.partners = []
+  return db
 }

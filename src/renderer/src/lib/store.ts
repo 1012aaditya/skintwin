@@ -91,7 +91,7 @@ export function useMatch(product: Product | null | undefined): MatchResult | nul
 /** Products that come from a catalog (demo or partner) — candidates for recommendations. */
 export function useCatalog(): Product[] {
   const db = useDb()
-  return useMemo(() => db.products.filter((p) => p.source.kind === 'demo_catalog' || p.source.kind === 'partner'), [db.products])
+  return useMemo(() => db.products.filter((p) => p.source.kind === 'catalog' || p.source.kind === 'partner'), [db.products])
 }
 
 export function useOwnedIds(): Set<string> {

@@ -1,4 +1,4 @@
-import { ArrowLeftRight, BadgeCheck, CalendarPlus, ExternalLink, Heart, Info, PackageCheck, Plus, Search } from 'lucide-react'
+import { ArrowLeftRight, BadgeCheck, CalendarPlus, ExternalLink, Heart, ImageOff, Info, PackageCheck, Plus, Search } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
 import { label, PRODUCT_CATEGORIES, type Product, type ProductCategory, type RoutinePeriod } from '@shared/models'
 import type { MatchResult } from '@shared/scoring'
@@ -8,75 +8,24 @@ import { navigate } from '@renderer/lib/router'
 import { mutate, useDb, useMatch, useOwnedIds } from '@renderer/lib/store'
 import { Badge, Button, Dialog, Field, Input, Select, Tabs, Textarea } from '../ui'
 
-const BOTTLE_TINTS: Record<ProductCategory, [string, string]> = {
-  cleanser: ['#9fd8ff', '#e8f6ff'],
-  toner: ['#c8f0ff', '#f2fbff'],
-  essence: ['#ffe39a', '#fff8e1'],
-  serum: ['#f3eaff', '#ffffff'],
-  treatment: ['#d9c8ff', '#f6f0ff'],
-  moisturizer: ['#bcd8ff', '#f4f8ff'],
-  sunscreen: ['#ffc58a', '#fff3e6'],
-  exfoliant: ['#ffd0e6', '#fff2f8'],
-  mask: ['#c6f2d6', '#f2fff6'],
-  eye: ['#e6d6ff', '#fbf7ff'],
-  other: ['#e6e0ff', '#ffffff']
-}
-
-/** Up to two short lines for the bottle label, breaking on spaces and hyphens. */
-function labelLines(text: string, max = 9): string[] {
-  const words = text.replace(/-/g, '- ').split(/\s+/).filter(Boolean)
-  const lines: string[] = []
-  for (const w of words) {
-    const last = lines[lines.length - 1]
-    if (last !== undefined && (last + (last.endsWith('-') ? '' : ' ') + w).length <= max) lines[lines.length - 1] = last + (last.endsWith('-') ? '' : ' ') + w
-    else lines.push(w)
-  }
-  const out = lines.slice(0, 2).map((l) => (l.length > max ? `${l.slice(0, max - 1)}…` : l))
-  if (lines.length > 2) out[1] = `${out[1]!.slice(0, max - 1)}…`
-  return out
-}
-
-/** Real page image when the browser supplied one; otherwise a stylised illustration (never a fake photo). */
+/**
+ * The product's real photo (shipped with the catalog, cached from a verified page, or from the
+ * page the browser read). With no photo, an honest placeholder — never a drawing that could pass
+ * for the product.
+ */
 export function ProductArt({ product, size = 96, className }: { product: Product; size?: number; className?: string }) {
   const [broken, setBroken] = useState(false)
-  const [a, b] = BOTTLE_TINTS[product.category]
-  const tube = product.category === 'sunscreen' || product.category === 'moisturizer' || product.category === 'cleanser'
+  const photo = product.imageUrl && !broken ? product.imageUrl : null
+  const credit = product.sources?.image ? `Photo: ${product.sources.image.title}${product.sources.image.licence ? ` (${product.sources.image.licence})` : ''}` : undefined
   return (
-    <div className={cn('relative grid shrink-0 place-items-center overflow-hidden rounded-tile', className)} style={{ width: size, height: size, background: 'radial-gradient(circle at 30% 20%, #f7f0ff, #d8c6ff 70%, #b9a0f3)' }}>
-      {product.imageUrl && !broken ? (
-        <img src={product.imageUrl} alt="" className="h-full w-full object-cover" onError={() => setBroken(true)} referrerPolicy="no-referrer" />
+    <div className={cn('relative grid shrink-0 place-items-center overflow-hidden rounded-tile', photo ? 'bg-white' : 'bg-white/8 ring-1 ring-white/12 ring-inset', className)} style={{ width: size, height: size }} title={credit}>
+      {photo ? (
+        <img src={photo} alt={`${product.brand} ${product.name}`} className="h-full w-full object-contain" onError={() => setBroken(true)} referrerPolicy="no-referrer" />
       ) : (
-        <svg viewBox="0 0 100 100" width={size * 0.82} height={size * 0.82} aria-hidden>
-          <defs>
-            <linearGradient id={`b-${product.id}`} x1="0" x2="1">
-              <stop offset="0" stopColor={a} />
-              <stop offset="0.5" stopColor={b} />
-              <stop offset="1" stopColor={a} />
-            </linearGradient>
-          </defs>
-          {tube ? (
-            <>
-              <rect x="30" y="12" width="40" height="70" rx="10" fill={`url(#b-${product.id})`} stroke="#fff" strokeOpacity=".7" />
-              <rect x="38" y="80" width="24" height="10" rx="3" fill="#7c5ccf" opacity=".8" />
-            </>
-          ) : (
-            <>
-              <rect x="44" y="6" width="12" height="14" rx="3" fill="#5c3fb3" />
-              <rect x="40" y="18" width="20" height="8" rx="2" fill="#efe6ff" />
-              <rect x="30" y="26" width="40" height="64" rx="9" fill={`url(#b-${product.id})`} stroke="#fff" strokeOpacity=".7" />
-            </>
-          )}
-          <rect x="33" y="46" width="34" height="22" rx="3" fill="#fff" opacity=".88" />
-          <text textAnchor="middle" fill="#4b3399" fontFamily="system-ui" fontWeight="700" fontSize="6.2">
-            {labelLines(product.brand || product.name).map((line, i, all) => (
-              <tspan key={i} x="50" y={(all.length === 1 ? 59.5 : 55.5) + i * 7}>
-                {line}
-              </tspan>
-            ))}
-          </text>
-          <circle cx="22" cy="78" r="7" fill="#fff" opacity=".35" />
-          <circle cx="80" cy="30" r="5" fill="#fff" opacity=".35" />
-        </svg>
+        <div className="flex flex-col items-center gap-1 px-1 text-center text-ink-faint" data-testid="no-photo">
+          <ImageOff style={{ width: size * 0.26, height: size * 0.26 }} />
+          {size >= 64 && <span className="text-[10.5px] leading-tight">No photo found</span>}
+        </div>
       )}
     </div>
   )
@@ -99,10 +48,16 @@ export function MatchBadge({ match, size = 'md' }: { match: MatchResult | null; 
 
 export function SourceBadge({ product }: { product: Product }) {
   const s = product.source
+  if (s.kind === 'catalog')
+    return (
+      <Badge size="sm" title={s.label}>
+        {product.sources?.page?.kind === 'open_beauty_facts' ? 'Open Beauty Facts' : 'Catalog'}
+      </Badge>
+    )
   if (s.kind === 'demo_catalog')
     return (
       <Badge tone="demo" size="sm" title={s.label}>
-        Demo data
+        Older entry
       </Badge>
     )
   if (s.kind === 'browser')
@@ -125,13 +80,14 @@ export function SourceBadge({ product }: { product: Product }) {
   )
 }
 
+/** A price only when one was read from a store; otherwise where to look. */
 export function PriceTag({ product, className }: { product: Product; className?: string }) {
   const text = formatPrice(product.price)
-  if (!text) return <span className={cn('text-sm text-ink-faint', className)}>Price unknown</span>
+  if (!text) return <span className={cn('text-sm text-ink-faint', className)}>{product.url && product.retailer ? `See price at ${product.retailer}` : 'No price listed'}</span>
   return (
     <span className={cn('inline-flex items-baseline gap-1.5', className)} title={product.price?.note ?? undefined}>
       <span className="text-lg font-semibold">{text}</span>
-      {!product.price?.verified && <span className="text-[11px] text-amber-200/80">{product.source.kind === 'demo_catalog' ? 'demo' : 'unverified'}</span>}
+      {!product.price?.verified && <span className="text-[11px] text-amber-200/80">unverified</span>}
     </span>
   )
 }

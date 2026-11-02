@@ -5,3 +5,7 @@ dist
 .DS_Store
 *.tsbuildinfo
 .impeccable
+
+# catalog builder scratch results
+scripts/catalog/.cache/
+scripts/catalog/*.log

@@ -28,7 +28,6 @@ export interface AppConfig {
   elevenLabsKey: string | null
   elevenLabsVoiceId: string | null
   ttsProvider: 'system' | 'elevenlabs'
-  demoCatalog: boolean
   enableMocks: boolean
   bridgePort: number
 }
@@ -67,7 +66,6 @@ export function loadConfig(dirs: string[], isDev: boolean): AppConfig {
     elevenLabsKey,
     elevenLabsVoiceId: get('ELEVENLABS_VOICE_ID'),
     ttsProvider: get('TTS_PROVIDER') === 'elevenlabs' && elevenLabsKey && get('ELEVENLABS_VOICE_ID') ? 'elevenlabs' : 'system',
-    demoCatalog: (get('SKINTWIN_DEMO_CATALOG') ?? (isDev ? '1' : '0')) !== '0',
     enableMocks: (get('SKINTWIN_ENABLE_MOCKS') ?? (isDev ? '1' : '0')) !== '0',
     bridgePort: Number(get('SKINTWIN_BRIDGE_PORT') ?? BRIDGE_DEFAULT_PORT)
   }

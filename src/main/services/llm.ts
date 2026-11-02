@@ -35,7 +35,7 @@ export function buildContext(db: Database, question: string, productId: string |
   const matchCtx: MatchContext = { routineProducts, reactions: db.reactions, suspects }
   const product = productId ? (products.get(productId) ?? null) : null
   const match = product ? computeMatch(product, db.profile, matchCtx) : null
-  const catalog = db.products.filter((p) => p.source.kind === 'demo_catalog' || p.source.kind === 'partner')
+  const catalog = db.products.filter((p) => p.source.kind === 'catalog' || p.source.kind === 'partner')
   const alternatives = product ? alternativesFor(product, catalog, db.profile, matchCtx) : []
   const history = conversationId ? (db.conversations.find((c) => c.id === conversationId) ?? null) : null
   return { question, product, match, alternatives, db, history, suspects }

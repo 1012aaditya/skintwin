@@ -1,0 +1,480 @@
+{
+  "generatedAt": "2026-11-02T16:33:13.940Z",
+  "credit": {
+    "name": "Open Beauty Facts",
+    "licence": "Database: ODbL 1.0 · Photos: CC BY-SA 3.0",
+    "url": "https://world.openbeautyfacts.org"
+  },
+  "products": [
+    {
+      "id": "catalog:cetaphil-gentle-skin-cleanser",
+      "brand": "Cetaphil",
+      "name": "Gentle Skin Cleanser",
+      "category": "cleanser",
+      "sizeMl": 125,
+      "ingredientsText": "AQUA, GLYCERIN, CETEARYL ALCOHOL, PANTHENOL, NIACINAMIDE, PANTOLACTONE, XANTHAN GUM, SODIUM COCOYL ISETHIONATE, SODIUM BENZOATE, CITRIC ACID.",
+      "url": null,
+      "retailer": null,
+      "image": {
+        "file": "catalog/cetaphil-gentle-skin-cleanser.jpg",
+        "remote": null
+      },
+      "sources": {
+        "page": {
+          "url": "https://world.openbeautyfacts.org/product/8906005274106",
+          "title": "Gentle Skin Cleanser — Open Beauty Facts",
+          "kind": "open_beauty_facts",
+          "licence": "Database: ODbL 1.0 · Photos: CC BY-SA 3.0",
+          "fetchedAt": "2026-11-02T16:25:42.626Z"
+        },
+        "ingredients": {
+          "url": "https://world.openbeautyfacts.org/product/8906005274106",
+          "title": "Gentle Skin Cleanser — Open Beauty Facts",
+          "kind": "open_beauty_facts",
+          "licence": "ODbL 1.0",
+          "fetchedAt": "2026-11-02T16:25:42.626Z"
+        },
+        "image": {
+          "url": "https://images.openbeautyfacts.org/images/products/890/600/527/4106/front_en.6.400.jpg",
+          "title": "Gentle Skin Cleanser — photo from Open Beauty Facts",
+          "kind": "open_beauty_facts",
+          "licence": "CC BY-SA 3.0",
+          "fetchedAt": "2026-11-02T16:25:42.626Z"
+        }
+      }
+    },
+    {
+      "id": "catalog:cetaphil-oily-skin-cleanser",
+      "brand": "Cetaphil",
+      "name": "Oily Skin Cleanser",
+      "category": "cleanser",
+      "sizeMl": 500,
+      "ingredientsText": null,
+      "url": null,
+      "retailer": null,
+      "image": {
+        "file": "catalog/cetaphil-oily-skin-cleanser.jpg",
+        "remote": null
+      },
+      "sources": {
+        "page": {
+          "url": "https://world.openbeautyfacts.org/product/0772618072006",
+          "title": "Oily Skin Cleanser — Open Beauty Facts",
+          "kind": "open_beauty_facts",
+          "licence": "Database: ODbL 1.0 · Photos: CC BY-SA 3.0",
+          "fetchedAt": "2026-11-02T16:25:49.608Z"
+        },
+        "ingredients": null,
+        "image": {
+          "url": "https://images.openbeautyfacts.org/images/products/077/261/807/2006/front_en.19.400.jpg",
+          "title": "Oily Skin Cleanser — photo from Open Beauty Facts",
+          "kind": "open_beauty_facts",
+          "licence": "CC BY-SA 3.0",
+          "fetchedAt": "2026-11-02T16:25:49.608Z"
+        }
+      }
+    },
+    {
+      "id": "catalog:cetaphil-moisturising-cream",
+      "brand": "Cetaphil",
+      "name": "Moisturising Cream",
+      "category": "moisturizer",
+      "sizeMl": null,
+      "ingredientsText": "aqua, glycerin, petrolatum, dicaprylyl ether, dimethicone, glyceryl stearate, cetyl alcohol, helianthus annuus seed oil, prunus amygdalus dulcis oil, tocopherol, tocopheryl acetate, panthenol, citric acid, sodium hydroxide, benzyl alcohol, phenoxyethanol, caprylyl glycol",
+      "url": null,
+      "retailer": null,
+      "image": null,
+      "sources": {
+        "page": {
+          "url": "https://world.openbeautyfacts.org/product/3499320013017",
+          "title": "Moisturising Cream — Open Beauty Facts",
+          "kind": "open_beauty_facts",
+          "licence": "Database: ODbL 1.0 · Photos: CC BY-SA 3.0",
+          "fetchedAt": "2026-11-02T16:25:56.578Z"
+        },
+        "ingredients": {
+          "url": "https://world.openbeautyfacts.org/product/3499320013017",
+          "title": "Moisturising Cream — Open Beauty Facts",
+          "kind": "open_beauty_facts",
+          "licence": "ODbL 1.0",
+          "fetchedAt": "2026-11-02T16:25:56.578Z"
+        },
+        "image": null
+      }
+    },
+    {
+      "id": "catalog:cetaphil-daily-advance-ultra-hydrating-lotion",
+      "brand": "Cetaphil",
+      "name": "Daily Advance Ultra Hydrating Lotion",
+      "category": "moisturizer",
+      "sizeMl": 30,
+      "ingredientsText": null,
+      "url": null,
+      "retailer": null,
+      "image": {
+        "file": "catalog/cetaphil-daily-advance-ultra-hydrating-lotion.jpg",
+        "remote": null
+      },
+      "sources": {
+        "page": {
+          "url": "https://world.openbeautyfacts.org/product/8906005271693",
+          "title": "cetaphil daily advance ultra hydrating lotion — Open Beauty Facts",
+          "kind": "open_beauty_facts",
+          "licence": "Database: ODbL 1.0 · Photos: CC BY-SA 3.0",
+          "fetchedAt": "2026-11-02T16:26:03.604Z"
+        },
+        "ingredients": null,
+        "image": {
+          "url": "https://images.openbeautyfacts.org/images/products/890/600/527/1693/front_en.3.400.jpg",
+          "title": "cetaphil daily advance ultra hydrating lotion — photo from Open Beauty Facts",
+          "kind": "open_beauty_facts",
+          "licence": "CC BY-SA 3.0",
+          "fetchedAt": "2026-11-02T16:26:03.604Z"
+        }
+      }
+    },
+    {
+      "id": "catalog:cerave-hydrating-cleanser",
+      "brand": "CeraVe",
+      "name": "Hydrating Cleanser",
+      "category": "cleanser",
+      "sizeMl": 236,
+      "ingredientsText": "aqua/water, glycerin, cetearyl alcohol, peg-40 stearate, stearyl alcohol, potassium phosphate, ceramide np, ceramide ap, ceramide eop, carbomer, glyceryl stearate, behentrimonium methosulfate, sodium lauroyl lactylate, sodium hyaluronate, disodium edta, dipotassium phosphate, cholesterol, phenoxyethanol, xanthan gum, tocopherol, phytosphingosine, ethylhexylglycerin",
+      "url": null,
+      "retailer": null,
+      "image": {
+        "file": "catalog/cerave-hydrating-cleanser.jpg",
+        "remote": null
+      },
+      "sources": {
+        "page": {
+          "url": "https://world.openbeautyfacts.org/product/3337875597180",
+          "title": "Hydrating Cleanser — Open Beauty Facts",
+          "kind": "open_beauty_facts",
+          "licence": "Database: ODbL 1.0 · Photos: CC BY-SA 3.0",
+          "fetchedAt": "2026-11-02T16:26:17.867Z"
+        },
+        "ingredients": {
+          "url": "https://world.openbeautyfacts.org/product/3337875597180",
+          "title": "Hydrating Cleanser — Open Beauty Facts",
+          "kind": "open_beauty_facts",
+          "licence": "ODbL 1.0",
+          "fetchedAt": "2026-11-02T16:26:17.867Z"
+        },
+        "image": {
+          "url": "https://images.openbeautyfacts.org/images/products/333/787/559/7180/front_en.35.400.jpg",
+          "title": "Hydrating Cleanser — photo from Open Beauty Facts",
+          "kind": "open_beauty_facts",
+          "licence": "CC BY-SA 3.0",
+          "fetchedAt": "2026-11-02T16:26:17.867Z"
+        }
+      }
+    },
+    {
+      "id": "catalog:cerave-foaming-cleanser",
+      "brand": "CeraVe",
+      "name": "Foaming Cleanser",
+      "category": "cleanser",
+      "sizeMl": 355,
+      "ingredientsText": "Aqua/Water/Eau, Cocamidopropyl Hydroxysultaine, Glycerin, Sodium Lauroyl Sarcosinate, PEG-150 Pentaerythrityl Tetrastearate, Niacinamide, PEG-6 Caprylic/Capric Glycerides, Sodium Methyl Cocoyl Taurate, Propylene Glycol, Ceramide NP, Ceramide AP, Ceramide EOP, Carbomer, Methylparaben, Sodium Chloride, Sodium Lauroyl Lactylate, Cholesterol, Disodium EDTA, Propylparaben, Citric Acid, Tetrasodium EDTA, Hydrolyzed Hyaluronic Acid, Phytosphingosine, Xanthan Gum",
+      "url": null,
+      "retailer": null,
+      "image": {
+        "file": "catalog/cerave-foaming-cleanser.jpg",
+        "remote": null
+      },
+      "sources": {
+        "page": {
+          "url": "https://world.openbeautyfacts.org/product/3606000537750",
+          "title": "Foaming Facial Cleanser — Open Beauty Facts",
+          "kind": "open_beauty_facts",
+          "licence": "Database: ODbL 1.0 · Photos: CC BY-SA 3.0",
+          "fetchedAt": "2026-11-02T16:26:24.944Z"
+        },
+        "ingredients": {
+          "url": "https://world.openbeautyfacts.org/product/3606000537750",
+          "title": "Foaming Facial Cleanser — Open Beauty Facts",
+          "kind": "open_beauty_facts",
+          "licence": "ODbL 1.0",
+          "fetchedAt": "2026-11-02T16:26:24.944Z"
+        },
+        "image": {
+          "url": "https://images.openbeautyfacts.org/images/products/360/600/053/7750/front_en.20.400.jpg",
+          "title": "Foaming Facial Cleanser — photo from Open Beauty Facts",
+          "kind": "open_beauty_facts",
+          "licence": "CC BY-SA 3.0",
+          "fetchedAt": "2026-11-02T16:26:24.944Z"
+        }
+      }
+    },
+    {
+      "id": "catalog:cerave-sa-smoothing-cleanser",
+      "brand": "CeraVe",
+      "name": "SA Smoothing Cleanser",
+      "category": "cleanser",
+      "sizeMl": null,
+      "ingredientsText": "AQUA/WATER, SODIUM LAUROYL SARCOSINATE. COCAMIDOPROPYL HYDROXYSULTAINE, GLYCERIN, NIACINAMIDE. GLUCONOLACTONE, SODIUM METHYL COCOYL TAURATE, PEG-150 PENTAERYTHRITYL TETRASTEARATE, CERAMIDE NP, CERAMIDE AP, CERAMIDE EOP, CARBOMER, CALCIUM GLUCONATE, SALICYLIC ACID. SODIUM BENZOATE, SODIUM LAUROYL LACTYLATE, CHOLESTEROL. PHENOXYETHANOL, DISODIUM EDTA, TETRASODIUM EDTA, \nHYALURONIC ACID, PHYTOSPHINGOSINE, XANTHAN GUM, ETHYLHEXYLGLYCERIN.",
+      "url": null,
+      "retailer": null,
+      "image": {
+        "file": "catalog/cerave-sa-smoothing-cleanser.jpg",
+        "remote": null
+      },
+      "sources": {
+        "page": {
+          "url": "https://world.openbeautyfacts.org/product/3337875795456",
+          "title": "SA Smoothing Cleanser — Open Beauty Facts",
+          "kind": "open_beauty_facts",
+          "licence": "Database: ODbL 1.0 · Photos: CC BY-SA 3.0",
+          "fetchedAt": "2026-11-02T16:26:32.010Z"
+        },
+        "ingredients": {
+          "url": "https://world.openbeautyfacts.org/product/3337875795456",
+          "title": "SA Smoothing Cleanser — Open Beauty Facts",
+          "kind": "open_beauty_facts",
+          "licence": "ODbL 1.0",
+          "fetchedAt": "2026-11-02T16:26:32.010Z"
+        },
+        "image": {
+          "url": "https://images.openbeautyfacts.org/images/products/333/787/579/5456/front_en.14.400.jpg",
+          "title": "SA Smoothing Cleanser — photo from Open Beauty Facts",
+          "kind": "open_beauty_facts",
+          "licence": "CC BY-SA 3.0",
+          "fetchedAt": "2026-11-02T16:26:32.010Z"
+        }
+      }
+    },
+    {
+      "id": "catalog:cerave-moisturising-cream",
+      "brand": "CeraVe",
+      "name": "Moisturising Cream",
+      "category": "moisturizer",
+      "sizeMl": null,
+      "ingredientsText": "aqua, water, glycerin, cetearyl alcohol, caprylic, capric triglyceride, cetyl alcohol, ceteareth-20, petroleum, potassium phosphate, ceramide np, ceramide ap, ceramide eop, carbomer, dimethicone, behentrimonium methosulfate, cetearyl glucoside, lauroyl lactylate, sodium hyaluronate, cholesterol, phenoxyethanol, sodium edta, dipotassium phosphate, tocopherol, phytosphingosine, xanthan gum, ethylhexylglycerin",
+      "url": null,
+      "retailer": null,
+      "image": {
+        "file": "catalog/cerave-moisturising-cream.jpg",
+        "remote": null
+      },
+      "sources": {
+        "page": {
+          "url": "https://world.openbeautyfacts.org/product/3337875598996",
+          "title": "moisturising cream — Open Beauty Facts",
+          "kind": "open_beauty_facts",
+          "licence": "Database: ODbL 1.0 · Photos: CC BY-SA 3.0",
+          "fetchedAt": "2026-11-02T16:26:40.023Z"
+        },
+        "ingredients": {
+          "url": "https://world.openbeautyfacts.org/product/3337875598996",
+          "title": "moisturising cream — Open Beauty Facts",
+          "kind": "open_beauty_facts",
+          "licence": "ODbL 1.0",
+          "fetchedAt": "2026-11-02T16:26:40.023Z"
+        },
+        "image": {
+          "url": "https://images.openbeautyfacts.org/images/products/333/787/559/8996/front_en.28.400.jpg",
+          "title": "moisturising cream — photo from Open Beauty Facts",
+          "kind": "open_beauty_facts",
+          "licence": "CC BY-SA 3.0",
+          "fetchedAt": "2026-11-02T16:26:40.023Z"
+        }
+      }
+    },
+    {
+      "id": "catalog:the-ordinary-hyaluronic-acid-2-b5",
+      "brand": "The Ordinary",
+      "name": "Hyaluronic Acid 2% + B5",
+      "category": "serum",
+      "sizeMl": null,
+      "ingredientsText": "Aqua/Water/Eau, Sodium Hyaluronate, Propandiol, Pentylene Glycol, Hydrolyzed Hyaluronic Acid, Sodium Hyaluronate Crosspolymer, Phospholipids, Sphingolipids, Panthenol, Anthemis Nobilis Flower Extract, Glycerin, Polysorbate 20, Citric Acid, Sodium Citrate, Panisic Acid, Tocopherol, Trisodium Ethylenediamine Disuccinate, Caprylyl Glycol, Ethoxydiglycol, Ethylhexylglycerin, Hexylene Glycol, Phenoxyethanol, Chlorphenesin",
+      "url": null,
+      "retailer": null,
+      "image": {
+        "file": "catalog/the-ordinary-hyaluronic-acid-2-b5.jpg",
+        "remote": null
+      },
+      "sources": {
+        "page": {
+          "url": "https://world.openbeautyfacts.org/product/0769915233506",
+          "title": "Hyaluronic Acid 2% + B5 — Open Beauty Facts",
+          "kind": "open_beauty_facts",
+          "licence": "Database: ODbL 1.0 · Photos: CC BY-SA 3.0",
+          "fetchedAt": "2026-11-02T16:27:08.257Z"
+        },
+        "ingredients": {
+          "url": "https://world.openbeautyfacts.org/product/0769915233506",
+          "title": "Hyaluronic Acid 2% + B5 — Open Beauty Facts",
+          "kind": "open_beauty_facts",
+          "licence": "ODbL 1.0",
+          "fetchedAt": "2026-11-02T16:27:08.257Z"
+        },
+        "image": {
+          "url": "https://images.openbeautyfacts.org/images/products/076/991/523/3506/front_en.8.400.jpg",
+          "title": "Hyaluronic Acid 2% + B5 — photo from Open Beauty Facts",
+          "kind": "open_beauty_facts",
+          "licence": "CC BY-SA 3.0",
+          "fetchedAt": "2026-11-02T16:27:08.257Z"
+        }
+      }
+    },
+    {
+      "id": "catalog:the-ordinary-natural-moisturizing-factors-ha",
+      "brand": "The Ordinary",
+      "name": "Natural Moisturizing Factors + HA",
+      "category": "moisturizer",
+      "sizeMl": null,
+      "ingredientsText": "Aqua (Water), Caprylic/Capric Triglyceride, Cetyl Alcohol, Propanediol, Stearyl Alcohol, Glycerin, Sodium Hyaluronate, Arginine, Aspartic Acid, Glycine, Alanine, Serine, Valine, Isoleucine, Proline, Threonine, Histidine, Phenylalanine, Glucose, Maltose, Fructose, Trehalose, Sodium Pca, Pca, Sodium Lactate, Urea, Allantoin, Linoleic Acid, Oleic Acid, Phytosteryl Canola Glycerides, Palmitic Acid, Stearic Acid, Lecithin, Triolein, Tocopherol, Carbomer, Isoceteth-20, Polysorbate 60, Sodium Chloride, Citric Acid, Trisodium Ethylenediamine Disuccinate, Pentylene Glycol, Triethanolamine, Sodium Hydroxide, Phenoxyethanol, Chlorphenesin.",
+      "url": null,
+      "retailer": null,
+      "image": {
+        "file": "catalog/the-ordinary-natural-moisturizing-factors-ha.jpg",
+        "remote": null
+      },
+      "sources": {
+        "page": {
+          "url": "https://world.openbeautyfacts.org/product/0769915190731",
+          "title": "Natural Moisturizing Factors + HA — Open Beauty Facts",
+          "kind": "open_beauty_facts",
+          "licence": "Database: ODbL 1.0 · Photos: CC BY-SA 3.0",
+          "fetchedAt": "2026-11-02T16:27:23.776Z"
+        },
+        "ingredients": {
+          "url": "https://world.openbeautyfacts.org/product/0769915190731",
+          "title": "Natural Moisturizing Factors + HA — Open Beauty Facts",
+          "kind": "open_beauty_facts",
+          "licence": "ODbL 1.0",
+          "fetchedAt": "2026-11-02T16:27:23.776Z"
+        },
+        "image": {
+          "url": "https://images.openbeautyfacts.org/images/products/076/991/519/0731/front_en.3.400.jpg",
+          "title": "Natural Moisturizing Factors + HA — photo from Open Beauty Facts",
+          "kind": "open_beauty_facts",
+          "licence": "CC BY-SA 3.0",
+          "fetchedAt": "2026-11-02T16:27:23.776Z"
+        }
+      }
+    },
+    {
+      "id": "catalog:neutrogena-oil-free-acne-wash",
+      "brand": "Neutrogena",
+      "name": "Oil-Free Acne Wash",
+      "category": "cleanser",
+      "sizeMl": 177,
+      "ingredientsText": null,
+      "url": null,
+      "retailer": null,
+      "image": {
+        "file": "catalog/neutrogena-oil-free-acne-wash.jpg",
+        "remote": null
+      },
+      "sources": {
+        "page": {
+          "url": "https://world.openbeautyfacts.org/product/0887777111111",
+          "title": "Oil-Free Acne Wash — Open Beauty Facts",
+          "kind": "open_beauty_facts",
+          "licence": "Database: ODbL 1.0 · Photos: CC BY-SA 3.0",
+          "fetchedAt": "2026-11-02T16:27:59.284Z"
+        },
+        "ingredients": null,
+        "image": {
+          "url": "https://images.openbeautyfacts.org/images/products/088/777/711/1111/front_xx.7.400.jpg",
+          "title": "Oil-Free Acne Wash — photo from Open Beauty Facts",
+          "kind": "open_beauty_facts",
+          "licence": "CC BY-SA 3.0",
+          "fetchedAt": "2026-11-02T16:27:59.284Z"
+        }
+      }
+    },
+    {
+      "id": "catalog:neutrogena-deep-clean-facial-cleanser",
+      "brand": "Neutrogena",
+      "name": "Deep Clean Facial Cleanser",
+      "category": "cleanser",
+      "sizeMl": null,
+      "ingredientsText": "Water, Sodium C14-16 Olefin Sulfonate, Cocamidopropyl Betaine, Sodium Chloride, Salicylic Acid, PEG-120 Methyl Glucose Dioleate, PEG-80 Sorbitan Laurate, Fragrance, Sodium Hydroxide, Disodium EDTA, C12-15 Alkyl Lactate, Polyquaternium-7, Yellow 5, Red 40",
+      "url": null,
+      "retailer": null,
+      "image": {
+        "file": "catalog/neutrogena-deep-clean-facial-cleanser.jpg",
+        "remote": null
+      },
+      "sources": {
+        "page": {
+          "url": "https://world.openbeautyfacts.org/product/0070501060902",
+          "title": "Deep Clean Facial Cleanser — Open Beauty Facts",
+          "kind": "open_beauty_facts",
+          "licence": "Database: ODbL 1.0 · Photos: CC BY-SA 3.0",
+          "fetchedAt": "2026-11-02T16:28:06.401Z"
+        },
+        "ingredients": {
+          "url": "https://world.openbeautyfacts.org/product/0070501060902",
+          "title": "Deep Clean Facial Cleanser — Open Beauty Facts",
+          "kind": "open_beauty_facts",
+          "licence": "ODbL 1.0",
+          "fetchedAt": "2026-11-02T16:28:06.401Z"
+        },
+        "image": {
+          "url": "https://images.openbeautyfacts.org/images/products/007/050/106/0902/front_en.10.400.jpg",
+          "title": "Deep Clean Facial Cleanser — photo from Open Beauty Facts",
+          "kind": "open_beauty_facts",
+          "licence": "CC BY-SA 3.0",
+          "fetchedAt": "2026-11-02T16:28:06.401Z"
+        }
+      }
+    },
+    {
+      "id": "catalog:la-roche-posay-toleriane-hydrating-gentle-cleanser",
+      "brand": "La Roche-Posay",
+      "name": "Toleriane Hydrating Gentle Cleanser",
+      "category": "cleanser",
+      "sizeMl": null,
+      "ingredientsText": null,
+      "url": null,
+      "retailer": null,
+      "image": {
+        "file": "catalog/la-roche-posay-toleriane-hydrating-gentle-cleanser.jpg",
+        "remote": null
+      },
+      "sources": {
+        "page": {
+          "url": "https://world.openbeautyfacts.org/product/3337875545778",
+          "title": "Toleriane Hydrating Gentle Cleanser — Open Beauty Facts",
+          "kind": "open_beauty_facts",
+          "licence": "Database: ODbL 1.0 · Photos: CC BY-SA 3.0",
+          "fetchedAt": "2026-11-02T16:28:20.650Z"
+        },
+        "ingredients": null,
+        "image": {
+          "url": "https://images.openbeautyfacts.org/images/products/333/787/554/5778/front_en.9.400.jpg",
+          "title": "Toleriane Hydrating Gentle Cleanser — photo from Open Beauty Facts",
+          "kind": "open_beauty_facts",
+          "licence": "CC BY-SA 3.0",
+          "fetchedAt": "2026-11-02T16:28:20.650Z"
+        }
+      }
+    },
+    {
+      "id": "catalog:la-roche-posay-cicaplast-baume-b5",
+      "brand": "La Roche-Posay",
+      "name": "Cicaplast Baume B5+",
+      "category": "moisturizer",
+      "sizeMl": 40,
+      "ingredientsText": null,
+      "url": null,
+      "retailer": null,
+      "image": null,
+      "sources": {
+        "page": {
+          "url": "https://world.openbeautyfacts.org/product/3612623166239",
+          "title": "Cicaplast baume b5+ — Open Beauty Facts",
+          "kind": "open_beauty_facts",
+          "licence": "Database: ODbL 1.0 · Photos: CC BY-SA 3.0",
+          "fetchedAt": "2026-11-02T16:28:34.610Z"
+        },
+        "ingredients": null,
+        "image": null
+      }
+    }
+  ]
+}

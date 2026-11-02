@@ -9,6 +9,8 @@ import { navigate } from '@renderer/lib/router'
 import { useCatalog, useDb, useOwnedIds, useProductMap, useMatchContext, useProviders } from '@renderer/lib/store'
 import type { Product } from '@shared/models'
 
+const CATALOG_CREDIT_URL = 'https://world.openbeautyfacts.org'
+
 export function Shop() {
   const db = useDb()
   const providers = useProviders()
@@ -38,7 +40,14 @@ export function Shop() {
             ) : (
               <>
                 <p className="font-semibold text-ink">No partner integrations are connected.</p>
-                <p className="mt-1">{providers?.demoCatalog ? 'You’re seeing the demo catalog: key ingredients only and illustrative prices. “Visit” opens the brand’s official homepage — there are no partnerships, offers or in-app checkout.' : 'Connect a partner catalog to see products here.'}</p>
+                <p className="mt-1">
+                  {providers?.catalogSize
+                    ? `These ${providers.catalogSize} real products come from Open Beauty Facts, an open product database — the version sold in India may differ. No prices are shown unless read live from a store; there are no partnerships or in-app checkout.`
+                    : 'Connect a partner catalog to see products here.'}
+                </p>
+                <p className="mt-1 text-[12px] text-ink-faint">
+                  Data: <button className="underline" onClick={() => window.skintwin.openExternal(CATALOG_CREDIT_URL)}>Open Beauty Facts</button> contributors (ODbL); photos CC BY-SA 3.0.
+                </p>
               </>
             )}
           </div>

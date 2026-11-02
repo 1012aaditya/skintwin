@@ -180,7 +180,7 @@ function SideBySide({ rows, bestId, bestValueId }: { rows: Row[]; bestId?: strin
       {line('Routine overlap', (r) => (r.match.routineOverlap.length ? 'Duplicates an active you use' : 'No overlap'))}
       {line('Price', (r) => formatPrice(r.product.price) ?? 'Unknown')}
       {line('Price / mL', (r) => (pricePerMl(r.product) != null ? `${formatPrice({ ...r.product.price!, amount: pricePerMl(r.product)! })?.replace(/\.00$/, '')} / mL` : '—'), (r) => r.product.id === bestValueId && rows.length > 1)}
-      {line('Source', (r) => (r.product.source.kind === 'demo_catalog' ? 'Demo catalog' : r.product.source.label))}
+      {line('Source', (r) => r.product.source.label)}
     </>
   )
 }

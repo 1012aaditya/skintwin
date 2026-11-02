@@ -154,7 +154,8 @@ export interface AnalysisRun {
 }
 
 export const ProvenanceSchema = z.object({
-  kind: z.enum(['demo_catalog', 'browser', 'screen', 'manual', 'partner']),
+  // catalog = SkinTwin's real product catalog; demo_catalog = entries from older versions
+  kind: z.enum(['catalog', 'demo_catalog', 'browser', 'screen', 'manual', 'partner']),
   label: z.string(),
   url: z.string().nullable(),
   fetchedAt: z.string(),
@@ -197,6 +198,16 @@ export const ProductResearchSchema = z.object({
 })
 export type ProductResearch = z.infer<typeof ProductResearchSchema>
 
+/** Where one piece of product data came from, so every field can be credited. */
+export const SourceRefSchema = z.object({
+  url: z.string().max(2048),
+  title: z.string().max(300),
+  kind: z.enum(['open_beauty_facts', 'brand', 'retailer']),
+  licence: z.string().max(80).nullable(),
+  fetchedAt: z.string()
+})
+export type SourceRef = z.infer<typeof SourceRefSchema>
+
 export const ProductSchema = z.object({
   id: z.string(),
   name: z.string().min(1).max(200),
@@ -212,6 +223,8 @@ export const ProductSchema = z.object({
   claims: z.array(z.string().max(80)).max(10), // marketing claims reported by the source, e.g. "fragrance-free"
   source: ProvenanceSchema,
   research: ProductResearchSchema.optional(),
+  /** per-field credits: the product page, the ingredient list, the photo */
+  sources: z.object({ page: SourceRefSchema.nullable(), ingredients: SourceRefSchema.nullable(), image: SourceRefSchema.nullable() }).optional(),
   createdAt: z.string()
 })
 export type Product = z.infer<typeof ProductSchema>

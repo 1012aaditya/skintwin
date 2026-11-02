@@ -21,7 +21,7 @@ const check = (cond, msg) => (cond ? log('PASS', msg) : (failures.push(msg), con
 const app = await electron.launch({
   executablePath: bin,
   args: [ROOT],
-  env: { ...process.env, SKINTWIN_USER_DATA: userData, SKINTWIN_DEMO_CATALOG: '1', SKINTWIN_ENABLE_MOCKS: '1', SKINTWIN_BRIDGE_PORT: String(PORT), ANTHROPIC_API_KEY: '', OPENAI_API_KEY: '', ELEVENLABS_API_KEY: '', YOUCAM_API_KEY: '', STT_PROVIDER: 'off' },
+  env: { ...process.env, SKINTWIN_USER_DATA: userData, SKINTWIN_ENABLE_MOCKS: '1', SKINTWIN_BRIDGE_PORT: String(PORT), ANTHROPIC_API_KEY: '', OPENAI_API_KEY: '', ELEVENLABS_API_KEY: '', YOUCAM_API_KEY: '', STT_PROVIDER: 'off' },
   timeout: 30_000
 })
 const errors = []
@@ -94,41 +94,41 @@ const go = async (route) => {
   await main.evaluate((r) => (window.location.hash = r), route)
   await sleep(500)
 }
-for (const id of ['demo:cerave-hydrating-cleanser', 'demo:to-niacinamide', 'demo:cerave-moisturizing-cream', 'demo:lrp-anthelios']) {
+for (const id of ['catalog:cerave-hydrating-cleanser', 'catalog:the-ordinary-hyaluronic-acid-2-b5', 'catalog:cerave-moisturising-cream', 'catalog:the-ordinary-natural-moisturizing-factors-ha']) {
   await main.evaluate((pid) => window.skintwin.db.mutate({ type: 'inventory.add', productId: pid, status: 'in_use' }), id)
 }
 await go('/routine')
 await shot(main, '06-routine-empty')
-for (const id of ['demo:cerave-hydrating-cleanser', 'demo:to-niacinamide', 'demo:cerave-moisturizing-cream', 'demo:lrp-anthelios']) {
+for (const id of ['catalog:cerave-hydrating-cleanser', 'catalog:the-ordinary-hyaluronic-acid-2-b5', 'catalog:cerave-moisturising-cream', 'catalog:the-ordinary-natural-moisturizing-factors-ha']) {
   await main.evaluate((pid) => window.skintwin.db.mutate({ type: 'routine.addStep', period: 'am', productId: pid }), id)
 }
-await main.evaluate(() => window.skintwin.db.mutate({ type: 'routine.addStep', period: 'pm', productId: 'demo:cerave-hydrating-cleanser' }))
+await main.evaluate(() => window.skintwin.db.mutate({ type: 'routine.addStep', period: 'pm', productId: 'catalog:cerave-hydrating-cleanser' }))
 await sleep(300)
 // reorder via the UI's move-down button on the first step
 await main.evaluate(() => document.querySelector('[aria-expanded]')?.click())
 await sleep(200)
 await main.evaluate(() => document.querySelector('[aria-label="Move down"]')?.click())
 await sleep(500)
-check(db().routines.am.steps[1].productId === 'demo:cerave-hydrating-cleanser', 'routine reorder persisted')
+check(db().routines.am.steps[1].productId === 'catalog:cerave-hydrating-cleanser', 'routine reorder persisted')
 await shot(main, '07-routine')
 
 // ---------- Journey D: inventory ----------
-const invId = db().inventory.find((i) => i.productId === 'demo:to-niacinamide').id
+const invId = db().inventory.find((i) => i.productId === 'catalog:the-ordinary-hyaluronic-acid-2-b5').id
 await main.evaluate((id) => window.skintwin.db.mutate({ type: 'inventory.update', id, patch: { status: 'running_low', remainingPct: 15 } }), invId)
 await go('/inventory')
 await shot(main, '08-inventory')
 await clickText(main, 'Restock')
 await shot(main, '09-inventory-restock')
-check(await main.evaluate(() => document.body.innerText.includes('Restock same')), 'restock suggestion shown')
+check(await main.evaluate(() => document.body.innerText.includes('~15% left (your estimate)')), 'restock lists the running-low product') // "Restock same" needs a store link, which catalog products from open data don't have
 
 // ---------- Journey D2: reactions → suspects → avoid list (only after confirming) ----------
 await clickText(main, 'My products')
-const niaCard = main.locator('div.glass', { hasText: 'Niacinamide 10%' }).first()
+const niaCard = main.locator('div.glass', { hasText: 'Hyaluronic Acid 2% + B5' }).first()
 await niaCard.locator('[data-testid="reaction-toggle"]').click()
 await niaCard.locator('[data-testid="reaction-chips"] button:has-text("Redness")').click()
 await sleep(300)
-check(db().reactions.some((r) => r.productId === 'demo:to-niacinamide' && r.kind === 'redness'), 'one tap logs a reaction from an inventory card')
-const niaIngredients = db().products.find((p) => p.id === 'demo:to-niacinamide').ingredients
+check(db().reactions.some((r) => r.productId === 'catalog:the-ordinary-hyaluronic-acid-2-b5' && r.kind === 'redness'), 'one tap logs a reaction from an inventory card')
+const niaIngredients = db().products.find((p) => p.id === 'catalog:the-ordinary-hyaluronic-acid-2-b5').ingredients
 await main.evaluate((ings) => window.skintwin.db.mutate({ type: 'product.createManual', id: 'manual:smoke-twin', product: { name: 'Smoke Twin Serum', brand: 'Test', category: 'serum', sizeMl: null, ingredients: ings, url: null, description: null } }), niaIngredients)
 await main.evaluate(() => window.skintwin.db.mutate({ type: 'reaction.add', productId: 'manual:smoke-twin', kind: 'stinging' }))
 await main.waitForSelector('[data-testid="suspect-list"]')
@@ -145,8 +145,8 @@ check(db().profile.avoidIngredients.length === avoidBefore + 1, 'confirmed suspe
 for (const [route, name] of [
   ['/profile', '10-profile'],
   ['/shop', '11-shop'],
-  ['/product/demo%3Ato-niacinamide', '12-insights'],
-  ['/compare?ids=demo%3Ato-niacinamide', '13-compare'],
+  ['/product/catalog%3Athe-ordinary-hyaluronic-acid-2-b5', '12-insights'],
+  ['/compare?ids=catalog%3Athe-ordinary-hyaluronic-acid-2-b5', '13-compare'],
   ['/settings', '14-settings-voice'],
   ['/settings?tab=privacy', '15-settings-privacy']
 ]) {
@@ -254,7 +254,7 @@ await companion.click('[aria-label="Back to island"]')
 await companion.waitForSelector('[aria-label="Open SkinTwin"]')
 
 // An answer stays in the island as a one-line verdict; Details opens the full panel.
-const demoId = db().products.find((p) => p.source.kind === 'demo_catalog').id
+const demoId = db().products.find((p) => p.source.kind === 'catalog' && p.ingredients.length).id
 await main.evaluate((id) => window.skintwin.companion.show({ type: 'analyze-product', productId: id }), demoId)
 await companion.waitForSelector('button:has-text("Details")', { timeout: 15_000 })
 await sleep(700)
@@ -349,7 +349,7 @@ if (!(await companion.$('[data-testid="activity-list"]'))) {
 await clickText(companion, 'Not today')
 await sleep(500)
 check(!!db().notices[`routine:${period}`]?.dismissedDay, 'Not today dismisses the routine activity for the day')
-// next in the queue: the niacinamide serum marked running low (15%) earlier
+// next in the queue: the hyaluronic acid serum marked running low (15%) earlier
 await companion.hover('[aria-label="Open SkinTwin"]')
 await companion.waitForSelector('[data-testid="notice-row"]')
 await sleep(300)
@@ -441,7 +441,7 @@ await back()
 
 // ---------- Journey H: comparison → add selected alternative to routine ----------
 await clickText(companion, 'Compare')
-await clickText(companion, 'Minimalist')
+await clickText(companion, 'CeraVe') // a real-catalog alternative
 await sleep(300)
 await clickText(companion, 'Add to routine')
 await clickText(companion, 'Evening')

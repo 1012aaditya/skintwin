@@ -29,7 +29,7 @@ const here = dirname(fileURLToPath(import.meta.url))
 if (process.env['SKINTWIN_USER_DATA']) app.setPath('userData', process.env['SKINTWIN_USER_DATA'])
 const isDev = !app.isPackaged && !!process.env['ELECTRON_RENDERER_URL']
 const config = loadConfig([process.cwd(), app.getPath('userData')], isDev)
-const store = new Store(join(app.getPath('userData'), 'skintwin-db.json'), { demoCatalog: config.demoCatalog })
+const store = new Store(join(app.getPath('userData'), 'skintwin-db.json'))
 
 const assistant: AssistantProvider = config.anthropicKey ? new AnthropicAssistant(config.anthropicKey, config.llmModel) : new RuleBasedAssistant()
 const localStt = config.sttProvider === 'local' ? new LocalWhisperTranscriber(join(app.getPath('userData'), 'models'), config.sttLocalModel) : null
@@ -581,7 +581,7 @@ function registerIpc() {
     tts: { configured: true, provider: tts?.name ?? 'system' },
     youcam: { configured: !!config.youcamKey, mockAllowed: !config.youcamKey && config.enableMocks },
     bridge: { running: !!bridgeServer, port: config.bridgePort, error: bridgeError },
-    demoCatalog: config.demoCatalog
+    catalogSize: store.get().products.filter((p) => p.source.kind === 'catalog').length
   }))
 
   ipcMain.handle('analysis:run', async (e, req: { requestId: string; imageBase64: string; mimeType: string; capture?: unknown }): Promise<Result<AnalysisRun>> => {
@@ -877,7 +877,7 @@ function registerIpc() {
     return ok({ path: filePath })
   })
   ipcMain.handle('data:deleteAll', () => {
-    store.replaceAll(createEmptyDatabase({ demoCatalog: config.demoCatalog }))
+    store.replaceAll(createEmptyDatabase())
     return ok(store.snapshot())
   })
 }
