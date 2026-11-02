@@ -1,7 +1,7 @@
-import { AlertTriangle, ArrowLeftRight, ArrowRight, CalendarPlus, Check, CheckCircle2, CircleAlert, Crown, Droplet, Droplets, ExternalLink, Globe, Heart, Keyboard, Layers, Leaf, Loader2, MessageCircle, Mic, MicOff, PackageCheck, Pause, Play, RefreshCcw, ScanFace, ScanSearch, Settings, Sparkles, Sun, WifiOff, Zap } from 'lucide-react'
+import { AlertTriangle, ArrowLeftRight, ArrowRight, BookOpen, CalendarPlus, Check, CheckCircle2, CircleAlert, Crown, Droplet, Droplets, ExternalLink, Globe, Heart, Keyboard, Layers, Leaf, Loader2, MessageCircle, Mic, MicOff, PackageCheck, Pause, Play, RefreshCcw, ScanFace, ScanSearch, Settings, Sparkles, Sun, WifiOff, Zap } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useState, type ReactNode } from 'react'
-import { label, type Product, type RoutinePeriod } from '@shared/models'
+import { label, type Product, type ProductResearch, type ResearchSource, type RoutinePeriod } from '@shared/models'
 import { alternativesFor, pricePerMl, type MatchResult } from '@shared/scoring'
 import { Orb } from '@renderer/components/Orb'
 import { MatchBadge, PriceTag, ProductArt, SourceBadge, useProductActions } from '@renderer/components/products'
@@ -138,14 +138,77 @@ export function HomeView({ hasProduct, onPick }: { hasProduct: boolean; onPick: 
   )
 }
 
+// ---------- Research sources ----------
+
+const KIND_LABEL: Record<ProductResearch['findings'][number]['kind'], string> = {
+  peer_reviewed: 'Study',
+  dermatology_body: 'Dermatology body',
+  regulatory: 'Regulator',
+  brand: 'Brand',
+  retailer: 'Retailer',
+  other: 'Web'
+}
+
+const host = (url: string) => new URL(url).hostname.replace(/^www\./, '')
+
+function SourceLink({ source }: { source: ResearchSource }) {
+  return (
+    <button onClick={() => window.skintwin.openExternal(source.url)} title={source.url} className="inline-flex max-w-full items-center gap-1 text-left text-[12px] text-lilac-200 hover:text-white hover:underline">
+      <span className="truncate">{source.title || host(source.url)}</span>
+      <span className="shrink-0 text-ink/55">· {host(source.url)}</span>
+      <ExternalLink className="h-3 w-3 shrink-0" />
+    </button>
+  )
+}
+
+/** Where the verdict's facts came from. Every link here came back from a real web search. */
+export function ResearchSources({ product, research }: { product: Product; research: ProductResearch }) {
+  const fromScreen = product.source.kind === 'screen' && !product.source.label.includes('ingredients from')
+  const list =
+    research.ingredientsCheck === 'not_found'
+      ? { tone: 'warn', text: product.ingredients.length ? 'Couldn’t find the official ingredient list online to double-check what was read.' : 'Couldn’t find the ingredient list online.' }
+      : research.ingredientsCheck === 'differs'
+        ? { tone: 'warn', text: `The list online differs from what was read on screen${research.differences.length ? `: ${research.differences.join('; ')}` : '.'}` }
+        : research.ingredientsCheck === 'match'
+          ? { tone: 'ok', text: `The ${product.ingredients.length} ingredients read from your screen match the list online.` }
+          : { tone: 'ok', text: `${product.ingredients.length} ingredients from the list online${fromScreen ? '' : ' (none were readable on screen)'}.` }
+  return (
+    <div>
+      <SectionHead icon={<BookOpen className="text-lilac-200" />}>Sources</SectionHead>
+      <div className="space-y-2">
+        <div className={cn('rounded-[18px] px-3.5 py-3 text-[13px] leading-relaxed', list.tone === 'warn' ? 'bg-amber-300/12 text-amber-50' : 'bg-white/[0.07]')}>
+          <p className="flex items-start gap-2">
+            {list.tone === 'warn' ? <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-200" /> : <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-mint-300" />}
+            {list.text}
+          </p>
+          {research.ingredientSource && <div className="mt-1.5 pl-6"><SourceLink source={research.ingredientSource} /></div>}
+        </div>
+        {research.findings.map((f) => (
+          <div key={`${f.ingredient}${f.source.url}`} className="rounded-[18px] bg-white/[0.07] px-3.5 py-3">
+            <div className="flex items-center gap-2">
+              <p className="flex-1 text-[13.5px] font-semibold">{f.ingredient}</p>
+              <span className="rounded-pill bg-white/10 px-2 py-0.5 text-[11px] text-ink/80">{KIND_LABEL[f.kind]}</span>
+            </div>
+            <p className="mt-1 text-[13px] leading-relaxed text-ink/90">{f.finding}</p>
+            <div className="mt-1.5"><SourceLink source={f.source} /></div>
+          </div>
+        ))}
+        {!research.findings.length && <p className="px-1 text-[12.5px] text-ink/70">No research with a source was found for this product’s key ingredients.</p>}
+      </div>
+    </div>
+  )
+}
+
 // ---------- Thinking ----------
 
 export function ProcessingSteps({ ctx, hasProduct, inPanel }: { ctx: CompanionContext; hasProduct: boolean; inPanel?: boolean }) {
   const thinking = ctx.stage === 'thinking'
   const steps: { label: string; state: 'done' | 'active' | 'todo' }[] = []
   if (ctx.viaVoice) steps.push({ label: 'Understanding your question', state: thinking ? 'done' : 'active' })
-  if (ctx.stage === 'reading') steps.push({ label: 'Reading what you circled', state: 'active' })
-  else if (hasProduct) steps.push({ label: 'Reading the product details', state: thinking ? 'done' : 'todo' })
+  if (ctx.stage === 'reading' || ctx.stage === 'researching') {
+    steps.push({ label: 'Reading what you circled', state: ctx.stage === 'reading' ? 'active' : 'done' })
+    steps.push({ label: 'Finding the ingredient list and research', state: ctx.stage === 'researching' ? 'active' : 'todo' })
+  } else if (hasProduct) steps.push({ label: 'Reading the product details', state: thinking ? 'done' : 'todo' })
   steps.push({ label: 'Checking against your skin profile', state: thinking ? 'done' : 'todo' })
   steps.push({ label: 'Preparing a recommendation', state: thinking ? 'active' : 'todo' })
   return (
@@ -219,6 +282,7 @@ export function ResponseView({ ctx, speaker, onReplay, send }: { ctx: CompanionC
         )}
         {ctx.response!.providerNote && <p className="mt-3 text-[12px] text-amber-200">{ctx.response!.providerNote}</p>}
       </div>
+      {product?.research && <ResearchSources product={product} research={product.research} />}
       {referenced.length > 0 && (
         <div>
           <SectionHead icon={<Sparkles className="text-lilac-200" />}>Mentioned</SectionHead>

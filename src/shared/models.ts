@@ -142,6 +142,33 @@ export const PriceSchema = z.object({
 })
 export type Price = z.infer<typeof PriceSchema>
 
+export const SOURCE_KINDS = ['peer_reviewed', 'dermatology_body', 'regulatory', 'brand', 'retailer', 'other'] as const
+
+/** A source link SkinTwin saw come back from a real web search — never one the model wrote itself. */
+export const ResearchSourceSchema = z.object({ url: z.string().max(2048), title: z.string().max(300) })
+export type ResearchSource = z.infer<typeof ResearchSourceSchema>
+
+/** Web research behind a product verdict. Every URL is checked against the search results before it is stored. */
+export const ProductResearchSchema = z.object({
+  at: z.string(),
+  /** where the full ingredient list came from, if one was found */
+  ingredientSource: ResearchSourceSchema.nullable(),
+  /** how the found list compares with what was read from the user's screen */
+  ingredientsCheck: z.enum(['match', 'differs', 'not_compared', 'not_found']),
+  differences: z.array(z.string().max(300)).max(6),
+  findings: z
+    .array(
+      z.object({
+        ingredient: z.string().max(160),
+        finding: z.string().max(400),
+        kind: z.enum(SOURCE_KINDS),
+        source: ResearchSourceSchema
+      })
+    )
+    .max(8)
+})
+export type ProductResearch = z.infer<typeof ProductResearchSchema>
+
 export const ProductSchema = z.object({
   id: z.string(),
   name: z.string().min(1).max(200),
@@ -156,6 +183,7 @@ export const ProductSchema = z.object({
   retailer: z.string().nullable(),
   claims: z.array(z.string().max(80)).max(10), // marketing claims reported by the source, e.g. "fragrance-free"
   source: ProvenanceSchema,
+  research: ProductResearchSchema.optional(),
   createdAt: z.string()
 })
 export type Product = z.infer<typeof ProductSchema>

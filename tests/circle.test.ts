@@ -86,6 +86,9 @@ describe('companion: circle flow', () => {
   it('reads, then asks about the circled product', () => {
     let c: CompanionContext = r(initialContext, { type: 'READING_SCREEN', requestId: 'c1' })
     expect(c).toMatchObject({ state: 'processing', stage: 'reading' })
+    c = r(c, { type: 'RESEARCHING', requestId: 'c1' })
+    expect(c.stage).toBe('researching')
+    expect(r(c, { type: 'RESEARCHING', requestId: 'old' })).toBe(c)
     c = r(c, { type: 'SCREEN_READ', requestId: 'c1', productId: 'screen:1', nextRequestId: 'q1', question: 'Is this product good for my skin?' })
     expect(c).toMatchObject({ state: 'processing', stage: 'thinking', requestId: 'q1', productId: 'screen:1' })
   })

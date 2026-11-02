@@ -10,6 +10,7 @@ export type CompanionCommand =
   | { type: 'compare-product'; productId: string }
   | { type: 'detection-failed'; reason: string }
   | { type: 'circle-reading'; requestId: string }
+  | { type: 'circle-progress'; requestId: string; stage: 'researching' }
   | { type: 'circle-result'; requestId: string; productId: string }
   | { type: 'circle-failed'; requestId: string | null; kind: 'screen_denied' | 'screen_unreadable' | 'provider'; message: string }
 

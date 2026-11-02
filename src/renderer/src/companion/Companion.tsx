@@ -12,6 +12,7 @@ import { MicError, toWav16k, useRecorder, useSpeaker } from './voice'
 import { ComparisonView, ErrorView, HomeView, ProcessingSteps, ProductAnalysisView, ProductDetectedView, ProfilePeekView, QuickActionsView, ResponseView } from './views'
 
 export const DEFAULT_PRODUCT_QUESTION = 'Is this product good for my skin?'
+const STAGE_TITLE = { transcribing: 'Catching that…', reading: 'Looking at what you circled…', researching: 'Researching it online…', thinking: 'Analyzing for you…' } as const
 
 type WindowMode = 'orb' | 'compact' | 'expanded'
 const RANK: Record<WindowMode, number> = { orb: 0, compact: 1, expanded: 2 }
@@ -181,6 +182,7 @@ export function Companion() {
             void ask(requestId, DEFAULT_PRODUCT_QUESTION)
           }
         } else if (cmd.type === 'circle-reading') dispatch({ type: 'READING_SCREEN', requestId: cmd.requestId })
+        else if (cmd.type === 'circle-progress') dispatch({ type: 'RESEARCHING', requestId: cmd.requestId })
         else if (cmd.type === 'circle-result') {
           if (ctxRef.current.requestId !== cmd.requestId) return // cancelled while reading
           const nextRequestId = newRequestId()
@@ -260,7 +262,7 @@ export function Companion() {
                 )}
                 {ctx.state === 'processing' && (
                   <motion.div key="think" data-solid className="w-full max-w-[300px]" initial={{ opacity: 0, y: bottom ? 10 : -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-                    <p className={cn('mb-2 px-1 text-[15px] font-semibold [text-shadow:0_1px_8px_rgb(40_20_100/0.6)]', right ? 'text-right' : 'text-left')}>{ctx.stage === 'transcribing' ? 'Catching that…' : ctx.stage === 'reading' ? 'Looking at what you circled…' : 'Analyzing for you…'}</p>
+                    <p className={cn('mb-2 px-1 text-[15px] font-semibold [text-shadow:0_1px_8px_rgb(40_20_100/0.6)]', right ? 'text-right' : 'text-left')}>{STAGE_TITLE[ctx.stage ?? 'thinking']}</p>
                     <ProcessingSteps ctx={ctx} hasProduct={!!ctx.productId} />
                     <div className={cn('mt-2 flex', right ? 'justify-end' : 'justify-start')}>
                       <Hint k="Esc" t="cancel" onClick={cancel} />
@@ -318,7 +320,7 @@ export function Companion() {
                     {ctx.state === 'processing' && (
                       <div className="flex flex-col items-center pt-8">
                         <Orb size={120} mood="thinking" />
-                        <p className="mt-6 mb-4 text-[17px] font-semibold">{ctx.stage === 'transcribing' ? 'Catching that…' : ctx.stage === 'reading' ? 'Looking at what you circled…' : 'Analyzing for you…'}</p>
+                        <p className="mt-6 mb-4 text-[17px] font-semibold">{STAGE_TITLE[ctx.stage ?? 'thinking']}</p>
                         <ProcessingSteps ctx={ctx} hasProduct={!!ctx.productId} inPanel />
                         <div className="mt-4"><Hint k="Esc" t="to cancel" onClick={cancel} /></div>
                       </div>

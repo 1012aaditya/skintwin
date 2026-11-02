@@ -26,7 +26,7 @@ export interface CompanionContext {
   productId: string | null
   /** id of the single request allowed to resolve the current processing step */
   requestId: string | null
-  stage: 'transcribing' | 'reading' | 'thinking' | null
+  stage: 'transcribing' | 'reading' | 'researching' | 'thinking' | null
   question: string | null
   viaVoice: boolean
   response: AskResponse | null
@@ -48,6 +48,8 @@ export type CompanionEvent =
   | { type: 'PRODUCT_DETECTED'; productId: string }
   /** Main is reading a region the user circled on screen. */
   | { type: 'READING_SCREEN'; requestId: string }
+  /** The circled product was read; main is now looking it up online. */
+  | { type: 'RESEARCHING'; requestId: string }
   /** The circled product was read; go straight on to asking about it. */
   | { type: 'SCREEN_READ'; requestId: string; productId: string; nextRequestId: string; question: string }
   | { type: 'OPEN_ANALYSIS'; productId?: string }
@@ -133,6 +135,10 @@ export function companionReducer(ctx: CompanionContext, ev: CompanionEvent): Com
     case 'READING_SCREEN':
       if (ctx.state === 'processing') return ctx
       return { ...ctx, state: 'processing', stage: 'reading', requestId: ev.requestId, question: null, viaVoice: false, response: null, error: null }
+
+    case 'RESEARCHING':
+      if (ctx.state !== 'processing' || ctx.requestId !== ev.requestId) return ctx
+      return { ...ctx, stage: 'researching' }
 
     case 'SCREEN_READ':
       if (ctx.state !== 'processing' || ctx.requestId !== ev.requestId) return ctx // cancelled

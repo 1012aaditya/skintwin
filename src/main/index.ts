@@ -7,6 +7,7 @@ import type { Server } from 'node:http'
 import type { AskRequest, AskResponse, ProviderStatus, Result } from '@shared/assistant'
 import { lassoBounds, type Point } from '@shared/circle'
 import type { SkinAnalysis } from '@shared/models'
+import { splitIngredientText } from '@shared/ingredients'
 import { CORNERS, type Corner } from '@shared/models'
 import { MutationError, MutationSchema } from '@shared/mutations'
 import type { BridgeMessage } from '@shared/protocol'
@@ -16,6 +17,7 @@ import { startBridge } from './services/bridge'
 import { productFromExtraction, productFromScreenRead } from './services/ingest'
 import { AnthropicAssistant, AssistantError, buildContext, RuleBasedAssistant, type AssistantProvider } from './services/llm'
 import { ElevenLabsSpeaker, ElevenLabsTranscriber, LocalWhisperTranscriber, OpenAITranscriber, type SpeechToText, type TextToSpeech } from './services/speech'
+import { ProductResearcher } from './services/research'
 import { ScreenReader } from './services/vision'
 import { MockSkinAnalysis, YouCamError, YouCamProvider, type SkinAnalysisProvider } from './services/youcam'
 
@@ -34,6 +36,7 @@ const stt: SpeechToText | null =
   : localStt
 const tts: TextToSpeech | null = config.ttsProvider === 'elevenlabs' ? new ElevenLabsSpeaker(config.elevenLabsKey!, config.elevenLabsVoiceId!) : null
 const screenReader = config.anthropicKey ? new ScreenReader(config.anthropicKey, config.llmModel) : null
+const researcher = config.anthropicKey ? new ProductResearcher(config.anthropicKey, config.llmModel) : null
 const analysisProvider: SkinAnalysisProvider | null = config.youcamKey
   ? new YouCamProvider(config.youcamKey, config.youcamBase)
   : config.enableMocks ? new MockSkinAnalysis() : null
@@ -206,6 +209,7 @@ type CompanionCommand =
   | { type: 'compare-product'; productId: string }
   | { type: 'detection-failed'; reason: string }
   | { type: 'circle-reading'; requestId: string }
+  | { type: 'circle-progress'; requestId: string; stage: 'researching' }
   | { type: 'circle-result'; requestId: string; productId: string }
   | { type: 'circle-failed'; requestId: string | null; kind: 'screen_denied' | 'screen_unreadable' | 'provider'; message: string }
 
@@ -307,10 +311,39 @@ function endCircle(): NativeImage | null {
   return shot
 }
 
+/**
+ * Look the product up on the web: its full ingredient list and what reputable sources say
+ * about the ingredients that matter for this user. A failure here isn't fatal — the verdict
+ * just says it couldn't be checked online.
+ */
+async function researchProduct(productId: string, requestId: string, signal: AbortSignal) {
+  if (!researcher) return
+  const product = store.get().products.find((p) => p.id === productId)
+  if (!product) return
+  showCompanion({ type: 'circle-progress', requestId, stage: 'researching' })
+  try {
+    const { research, ingredientsText } = await researcher.research(product, store.get(), signal)
+    store.update((d) => {
+      const p = d.products.find((x) => x.id === productId)
+      if (!p) return
+      p.research = research
+      // Ingredients the user circled win; the online list only fills a gap.
+      if (!p.ingredients.length && ingredientsText && research.ingredientSource) {
+        p.ingredients = splitIngredientText(ingredientsText).slice(0, 120)
+        p.source = { ...p.source, label: `${p.source.label}; ingredients from ${new URL(research.ingredientSource.url).hostname.replace(/^www\./, '')}` }
+      }
+    })
+    console.info(`[research] ingredients ${research.ingredientsCheck}, ${research.findings.length} sourced findings`)
+  } catch (err) {
+    if (signal.aborted) throw err
+    console.warn(`[research] failed: ${(err as { status?: number }).status ?? (err as Error).message}`)
+  }
+}
+
 async function readCircle(jpeg: Buffer) {
   const requestId = `circle:${randomUUID()}`
   const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), 60_000)
+  const timer = setTimeout(() => ctrl.abort(), 180_000)
   inflight.set(requestId, ctrl)
   showCompanion({ type: 'circle-reading', requestId }, true)
   try {
@@ -331,11 +364,12 @@ async function readCircle(jpeg: Buffer) {
       d.lastDetectionFailure = null
     })
     console.info(`[circle] read (${read.confidence} confidence, ${product.ingredients.length} ingredients)`)
+    await researchProduct(product.id, requestId, ctrl.signal)
     showCompanion({ type: 'circle-result', requestId, productId: product.id })
   } catch (err) {
     const status = (err as { status?: number }).status
     console.warn(`[circle] failed: ${status ?? (err as Error).name}`)
-    if (ctrl.signal.aborted) circleFailed('provider', 'Reading the circled area took too long. Try a smaller circle.', requestId)
+    if (ctrl.signal.aborted) circleFailed('provider', 'That took too long. Try again, or circle a smaller area.', requestId)
     else if (err instanceof AssistantError) circleFailed('provider', err.message, requestId)
     else if (status === 401) circleFailed('provider', 'The Anthropic API key was rejected. Check ANTHROPIC_API_KEY.', requestId)
     else circleFailed('provider', 'Couldn’t reach Claude. Check your connection and try again.', requestId)
