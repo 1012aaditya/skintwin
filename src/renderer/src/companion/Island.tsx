@@ -7,6 +7,7 @@ import { ReactionChips } from '@renderer/components/reactions'
 import { cn } from '@renderer/lib/cn'
 import { mutate, useProductMap, useSnapshot } from '@renderer/lib/store'
 import { localDay, routineTitle, type Activity } from '@shared/activity'
+import { handleDrop } from './drop'
 import type { CompanionContext } from './machine'
 import { VERDICTS } from './views'
 
@@ -24,7 +25,7 @@ export interface IslandInfo {
 }
 export const NO_NOTCH: IslandInfo = { notch: false, barHeight: 0, notchWidth: 0 }
 
-type Shape = 'idle' | 'hover' | 'listening' | 'processing' | 'result' | 'react' | 'activityHover' | 'activityOpen'
+type Shape = 'idle' | 'hover' | 'listening' | 'processing' | 'result' | 'react' | 'activityHover' | 'activityOpen' | 'drop'
 
 /** A fresh answer shown in the pill: the verdict and one line, with the full answer a tap away. */
 export interface IslandResult {
@@ -51,6 +52,7 @@ export function islandSize(info: IslandInfo, shape: Shape, opts: { rows?: number
   const top = topRow(info)
   // without a notch the idle pill has room to say what's due; with one, only the ears do
   if (shape === 'idle') return { width: info.notch ? info.notchWidth + 104 : opts.activity ? 250 : 200, height: top }
+  if (shape === 'drop') return { width: 420, height: top + 62 }
   if (shape === 'activityHover') return { width: 420, height: top + ACTIVITY_ROW + 52 }
   if (shape === 'activityOpen') return { width: 420, height: top + ACTIVITY_ROW + (opts.rows ?? 0) * STEP_ROW + 50 }
   if (shape === 'hover') return { width: 420, height: top + 54 }
@@ -126,6 +128,14 @@ export function IslandBar({
   const [hover, setHover] = useState(false)
   const [reacting, setReacting] = useState(false)
   const [activityOpen, setActivityOpen] = useState(false)
+  // drag and drop: a highlight while something is over the pill, then a short message if it can't be used
+  const [dragging, setDragging] = useState(false)
+  const [dropMsg, setDropMsg] = useState<string | null>(null)
+  useEffect(() => {
+    if (!dropMsg) return
+    const t = setTimeout(() => setDropMsg(null), 4500)
+    return () => clearTimeout(t)
+  }, [dropMsg])
   // a different activity (or none) starts closed
   useEffect(() => setActivityOpen(false), [activity?.key])
   // a new answer (the result object itself is rebuilt on every render) closes the reaction row
@@ -142,7 +152,8 @@ export function IslandBar({
   }, [result, skinResult, hover, reacting, onDismiss, onSkinDismiss])
   const skinBusy = skin?.kind === 'progress' ? skin : null
   const shape: Shape =
-    ctx.state === 'listening' ? 'listening'
+    dragging || dropMsg ? 'drop'
+    : ctx.state === 'listening' ? 'listening'
     : ctx.state === 'processing' || skinBusy ? 'processing'
     : shownResult ? (reacting && shownResult.productId ? 'react' : 'result')
     : skinResult ? 'result'
@@ -154,6 +165,10 @@ export function IslandBar({
   const showSkinProgress = !!skinBusy && ctx.state !== 'processing'
   const { width, height } = islandSize(info, shape, { rows: activity?.steps.length, activity: !!activity })
   const top = topRow(info)
+  // tell main where the solid pill is, so a drag over it isn't let through to the app behind
+  useEffect(() => {
+    void window.skintwin.companion.setSolidRect({ x: (window.innerWidth - width) / 2, y: topGap(info), w: width, h: height })
+  }, [width, height, info])
 
   return (
     <motion.div
@@ -176,6 +191,25 @@ export function IslandBar({
         e.preventDefault()
         onMenu()
       }}
+      onDragEnter={(e) => {
+        e.preventDefault()
+        setDropMsg(null)
+        setDragging(true)
+      }}
+      onDragOver={(e) => {
+        e.preventDefault()
+        e.dataTransfer.dropEffect = 'copy'
+      }}
+      onDragLeave={(e) => {
+        // leaving for a child element isn't leaving the pill
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false)
+      }}
+      onDrop={(e) => {
+        e.preventDefault()
+        setDragging(false)
+        void handleDrop(e.dataTransfer).then(setDropMsg)
+      }}
+      data-testid="island"
     >
       {/* Level with the notch: only the two "ears" carry content; the middle stays empty. */}
       <button aria-label="Open SkinTwin" onClick={shownResult ? onDetails : skinResult ? onSkinDetails : onOpen} className="absolute inset-x-0 top-0 flex items-center justify-between px-3.5 outline-none" style={{ height: top }}>
@@ -204,6 +238,12 @@ export function IslandBar({
                     <ScanFace />
                   </Action>
                 </div>
+              </div>
+            )}
+            {shape === 'drop' && (
+              <div className={cn('flex min-h-10 w-full items-center gap-2.5 rounded-[20px] px-3 py-1.5 text-[13px]', dropMsg ? 'bg-rose-400/15 text-rose-100' : 'bg-lilac-500/30 text-white ring-2 ring-lilac-300/70 ring-inset')} data-testid="drop-zone">
+                {dropMsg ? <AlertTriangle className="h-4 w-4 shrink-0" /> : <ScanSearch className="h-4 w-4 shrink-0" />}
+                <span className="line-clamp-2 min-w-0 flex-1 leading-snug" title={dropMsg ?? undefined}>{dropMsg ?? 'Drop a product photo or page link to check it'}</span>
               </div>
             )}
             {shape === 'activityOpen' && activity && <ActivityList activity={activity} onClose={() => setActivityOpen(false)} />}

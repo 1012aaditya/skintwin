@@ -14,10 +14,11 @@ import type { BridgeMessage } from '@shared/protocol'
 import { loadConfig } from './config'
 import { createEmptyDatabase, Store } from './db'
 import { startBridge } from './services/bridge'
-import { productFromExtraction, productFromScreenRead } from './services/ingest'
+import { productFromExtraction, productFromPageRead, productFromScreenRead } from './services/ingest'
 import { AnthropicAssistant, AssistantError, buildContext, RuleBasedAssistant, type AssistantProvider } from './services/llm'
 import { ElevenLabsSpeaker, ElevenLabsTranscriber, LocalWhisperTranscriber, OpenAITranscriber, type SpeechToText, type TextToSpeech } from './services/speech'
-import { ProductResearcher } from './services/research'
+import { PageUnreadableError, ProductResearcher } from './services/research'
+import { dropUrl, MAX_DROP_BYTES } from '@shared/drop'
 import { ScreenReader } from './services/vision'
 import { MockSkinAnalysis, YouCamError, YouCamProvider, type MaskLink, type SkinAnalysisProvider } from './services/youcam'
 
@@ -57,6 +58,32 @@ const EDGE_MARGIN = 16
 let companionMode: CompanionMode = 'orb'
 let placingUntil = 0 // ignore 'moved' events caused by our own setBounds
 let shortcutStatus: { toggle: boolean; voice: boolean } = { toggle: false, voice: false }
+// Click-through state of the companion window, and where its solid pill is (window coordinates).
+let clickThrough = false
+let pillRect: { x: number; y: number; w: number; h: number } | null = null
+let pillForced = false
+
+/**
+ * The island window lets clicks through its transparent parts, and the renderer switches that
+ * off when the mouse is over the pill. During a drag macOS sends no mouse moves, so a drop
+ * would fall through to the app behind; this poll makes the pill solid under the cursor instead.
+ */
+function pollPill() {
+  const w = companionWindow
+  if (!w || w.isDestroyed()) return
+  if (!w.isVisible() || !clickThrough || !pillRect || !isIsland()) {
+    if (pillForced) w.setIgnoreMouseEvents(clickThrough, { forward: true })
+    pillForced = false
+    return
+  }
+  const b = w.getBounds()
+  const c = screen.getCursorScreenPoint()
+  const r = pillRect
+  const inside = c.x >= b.x + r.x && c.x <= b.x + r.x + r.w && c.y >= b.y + r.y && c.y <= b.y + r.y + r.h
+  if (inside === pillForced) return
+  pillForced = inside
+  w.setIgnoreMouseEvents(!inside, { forward: true })
+}
 
 // ---------- Windows ----------
 
@@ -214,6 +241,8 @@ function createCompanionWindow(): BrowserWindow {
     webPreferences: webPreferences()
   })
   if (process.platform === 'darwin') companionWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true })
+  const pillTimer = setInterval(pollPill, 120)
+  companionWindow.on('closed', () => clearInterval(pillTimer))
   // Keep skin verdicts out of screen sharing and recordings (Meet, Zoom…); the user still sees it.
   // Newer macOS capture APIs may ignore this, so Privacy mode exists as a manual fallback.
   companionWindow.setContentProtection(true)
@@ -255,10 +284,10 @@ type CompanionCommand =
   | { type: 'analyze-product'; productId: string }
   | { type: 'compare-product'; productId: string }
   | { type: 'detection-failed'; reason: string }
-  | { type: 'circle-reading'; requestId: string }
+  | { type: 'circle-reading'; requestId: string; source?: 'circle' | 'image' | 'link' }
   | { type: 'circle-progress'; requestId: string; stage: 'researching' }
   | { type: 'circle-result'; requestId: string; productId: string }
-  | { type: 'circle-failed'; requestId: string | null; kind: 'screen_denied' | 'screen_unreadable' | 'provider'; message: string }
+  | { type: 'circle-failed'; requestId: string | null; kind: 'screen_denied' | 'screen_unreadable' | 'page_unreadable' | 'provider'; message: string }
 
 function broadcast(channel: string, payload: unknown) {
   for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(channel, payload)
@@ -299,7 +328,7 @@ const SCREEN_SETTINGS_URL = 'x-apple.systempreferences:com.apple.preference.secu
 let circleDisplay: Electron.Display | null = null
 let companionBeforeCircle = false
 
-const circleFailed = (kind: 'screen_denied' | 'screen_unreadable' | 'provider', message: string, requestId: string | null = null) =>
+const circleFailed = (kind: 'screen_denied' | 'screen_unreadable' | 'page_unreadable' | 'provider', message: string, requestId: string | null = null) =>
   showCompanion({ type: 'circle-failed', requestId, kind, message }, true)
 
 /** Screenshot of one display, or null if it couldn't be taken. */
@@ -387,19 +416,20 @@ async function researchProduct(productId: string, requestId: string, signal: Abo
   }
 }
 
-async function readCircle(jpeg: Buffer) {
+/** A circled region or a dropped photo: read it with Claude, research it, then ask about it. */
+async function readCircle(jpeg: Buffer, origin: 'circle' | 'image' = 'circle') {
   const requestId = `circle:${randomUUID()}`
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), 180_000)
   inflight.set(requestId, ctrl)
-  showCompanion({ type: 'circle-reading', requestId }, true)
+  showCompanion({ type: 'circle-reading', requestId, source: origin }, origin === 'circle')
   try {
     const read = await screenReader!.read(jpeg, ctrl.signal)
     const now = new Date().toISOString()
     const db = store.get()
     const recent = db.detected?.method === 'screen' ? (db.products.find((p) => p.id === db.detected!.productId) ?? null) : null
-    const product = productFromScreenRead(read, now, recent)
-    if (!product) return circleFailed('screen_unreadable', read.note || 'I couldn’t spot a single skincare product there.', requestId)
+    const product = productFromScreenRead(read, now, recent, origin)
+    if (!product) return circleFailed('screen_unreadable', read.note || (origin === 'image' ? 'I couldn’t spot a single skincare product in that photo.' : 'I couldn’t spot a single skincare product there.'), requestId)
     store.update((d) => {
       const idx = d.products.findIndex((p) => p.id === product.id)
       const old = idx >= 0 ? d.products[idx]! : null
@@ -418,6 +448,43 @@ async function readCircle(jpeg: Buffer) {
     console.warn(`[circle] failed: ${status ?? (err as Error).name}`)
     if (ctrl.signal.aborted) circleFailed('provider', 'That took too long. Try again, or circle a smaller area.', requestId)
     else if (err instanceof AssistantError) circleFailed('provider', err.message, requestId)
+    else if (status === 401) circleFailed('provider', 'The Anthropic API key was rejected. Check ANTHROPIC_API_KEY.', requestId)
+    else circleFailed('provider', 'Couldn’t reach Claude. Check your connection and try again.', requestId)
+  } finally {
+    clearTimeout(timer)
+    inflight.delete(requestId)
+  }
+}
+
+/** A product page link dropped onto the island: fetch that page, identify the product, research it. */
+async function readLink(url: string) {
+  const requestId = `link:${randomUUID()}`
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), 180_000)
+  inflight.set(requestId, ctrl)
+  showCompanion({ type: 'circle-reading', requestId, source: 'link' })
+  try {
+    const { read, pageUrl } = await researcher!.identify(url, ctrl.signal)
+    const now = new Date().toISOString()
+    const product = productFromPageRead(read, pageUrl, now)
+    if (!product) return circleFailed('page_unreadable', read.note || 'That page doesn’t seem to be about one skincare product.', requestId)
+    store.update((d) => {
+      const idx = d.products.findIndex((p) => p.id === product.id)
+      const old = idx >= 0 ? d.products[idx]! : null
+      const merged = old ? { ...product, ingredients: product.ingredients.length ? product.ingredients : old.ingredients, research: old.research, createdAt: old.createdAt } : product
+      if (old) d.products[idx] = merged
+      else d.products.push(merged)
+      d.detected = { productId: product.id, tabUrl: pageUrl, retailer: product.retailer, detectedAt: now, method: 'link' }
+      d.lastDetectionFailure = null
+    })
+    console.info(`[drop] link read (${read.confidence} confidence, ${product.ingredients.length} ingredients)`) // never the URL
+    await researchProduct(product.id, requestId, ctrl.signal)
+    showCompanion({ type: 'circle-result', requestId, productId: product.id })
+  } catch (err) {
+    const status = (err as { status?: number }).status
+    console.warn(`[drop] link failed: ${status ?? (err as Error).name}`)
+    if (err instanceof PageUnreadableError) circleFailed('page_unreadable', err.message, requestId)
+    else if (ctrl.signal.aborted) circleFailed('provider', 'That took too long. Try again, or circle the product on screen.', requestId)
     else if (status === 401) circleFailed('provider', 'The Anthropic API key was rejected. Check ANTHROPIC_API_KEY.', requestId)
     else circleFailed('provider', 'Couldn’t reach Claude. Check your connection and try again.', requestId)
   } finally {
@@ -657,6 +724,23 @@ function registerIpc() {
     if (scale < 1) crop = crop.resize({ width: Math.round(width * scale), height: Math.round(height * scale), quality: 'best' })
     void readCircle(crop.toJPEG(88))
   })
+  // Something dropped onto the island. The renderer has already re-encoded photos as JPEG.
+  ipcMain.handle('drop:image', (_e, raw: { jpegBase64: string }) => {
+    if (!screenReader) return circleFailed('provider', 'Checking a photo needs Claude. Add ANTHROPIC_API_KEY to your .env file.')
+    const jpeg = typeof raw?.jpegBase64 === 'string' && raw.jpegBase64.length < MAX_DROP_BYTES * 1.4 ? Buffer.from(raw.jpegBase64, 'base64') : null
+    if (!jpeg || jpeg[0] !== 0xff || jpeg[1] !== 0xd8) return circleFailed('screen_unreadable', 'That image couldn’t be read. Try a PNG or JPG photo.')
+    void readCircle(jpeg, 'image')
+  })
+  ipcMain.handle('drop:link', (_e, raw: { url: string }) => {
+    if (!researcher) return circleFailed('provider', 'Checking a link needs Claude. Add ANTHROPIC_API_KEY to your .env file.')
+    const url = dropUrl(raw?.url)
+    if (!url) return circleFailed('page_unreadable', 'That isn’t a web link SkinTwin can open.')
+    void readLink(url)
+  })
+  // The island's solid pill, in window coordinates, so drags over it are caught (see pollPill).
+  ipcMain.handle('companion:setSolidRect', (_e, r: { x: number; y: number; w: number; h: number } | null) => {
+    pillRect = r && [r.x, r.y, r.w, r.h].every(Number.isFinite) ? r : null
+  })
   ipcMain.handle('circle:openSettings', () => {
     if (process.platform === 'darwin') void shell.openExternal(SCREEN_SETTINGS_URL)
   })
@@ -724,6 +808,7 @@ function registerIpc() {
   })
   // Transparent parts of the compact companion let clicks fall through to the windows behind it.
   ipcMain.handle('companion:setClickThrough', (_e, through: boolean) => {
+    clickThrough = !!through
     companionWindow?.setIgnoreMouseEvents(!!through, { forward: true })
   })
   ipcMain.handle('companion:setPinned', (_e, pinned: boolean) => {

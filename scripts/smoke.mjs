@@ -279,6 +279,42 @@ await companion.click('[aria-label="Back to island"]')
 await companion.waitForSelector('[aria-label="Open SkinTwin"]')
 
 // The rest of the companion checks use the floating orb.
+// Drag and drop onto the pill (simulated: macOS drags can't be automated). No Claude key here,
+// so accepted drops end in a clear "needs Claude" message.
+const dropOnIsland = (kind) =>
+  companion.evaluate(async (k) => {
+    const dt = new DataTransfer()
+    if (k === 'pdf') dt.items.add(new File(['%PDF-1.4'], 'doc.pdf', { type: 'application/pdf' }))
+    else if (k === 'link') dt.setData('text/uri-list', 'https://example.com/products/serum')
+    else {
+      const c = document.createElement('canvas')
+      c.width = c.height = 64
+      const blob = await new Promise((r) => c.toBlob(r, 'image/png'))
+      dt.items.add(new File([blob], 'serum.png', { type: 'image/png' }))
+    }
+    const el = document.querySelector('[data-testid="island"]')
+    el.dispatchEvent(new DragEvent('dragenter', { bubbles: true, cancelable: true, dataTransfer: dt }))
+    el.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }))
+  }, kind)
+await companion.evaluate(() => document.querySelector('[data-testid="island"]').dispatchEvent(new DragEvent('dragenter', { bubbles: true, cancelable: true, dataTransfer: new DataTransfer() })))
+await companion.waitForSelector('[data-testid="drop-zone"]')
+await sleep(300)
+await shot(companion, '20-island-drop-highlight')
+await dropOnIsland('pdf')
+await companion.waitForSelector('[data-testid="drop-zone"] >> text=Only product photos')
+check(true, 'dropping a non-image file is rejected with a short message')
+await shot(companion, '20-island-drop-reject')
+await dropOnIsland('link')
+await companion.waitForSelector('text=Checking a link needs Claude', { timeout: 8000 })
+check(true, 'a dropped link goes to the link reader (needs Claude without a key)')
+await companion.click('[aria-label="Back to island"]')
+await companion.waitForSelector('[aria-label="Open SkinTwin"]')
+await dropOnIsland('png')
+await companion.waitForSelector('text=Checking a photo needs Claude', { timeout: 8000 })
+check(true, 'a dropped photo goes to the screen reader (needs Claude without a key)')
+await companion.click('[aria-label="Back to island"]')
+await companion.waitForSelector('[aria-label="Open SkinTwin"]')
+
 // Routine as a live activity: windows cover the whole day so the check doesn't depend on the clock.
 await main.evaluate(() => window.skintwin.db.mutate({ type: 'settings.update', patch: { companion: { amWindow: [0, 12], pmWindow: [12, 24] } } }))
 await companion.waitForSelector('[data-testid="activity-ear"]', { timeout: 10_000 })

@@ -26,12 +26,17 @@ const api: SkinTwinApi = {
     setMode: (m) => ipcRenderer.invoke('companion:setMode', m),
     setPinned: (p) => ipcRenderer.invoke('companion:setPinned', p),
     setClickThrough: (t) => ipcRenderer.invoke('companion:setClickThrough', t),
+    setSolidRect: (r) => ipcRenderer.invoke('companion:setSolidRect', r),
     dragStart: () => ipcRenderer.invoke('companion:dragStart'),
     dragMove: (dx, dy) => ipcRenderer.invoke('companion:dragMove', dx, dy),
     dragEnd: () => ipcRenderer.invoke('companion:dragEnd'),
     menu: (opts) => ipcRenderer.invoke('companion:menu', opts),
     islandInfo: () => ipcRenderer.invoke('companion:islandInfo'),
     onCommand: on('companion:command')
+  },
+  drop: {
+    image: (jpegBase64) => ipcRenderer.invoke('drop:image', { jpegBase64 }),
+    link: (url) => ipcRenderer.invoke('drop:link', { url })
   },
   circle: {
     start: () => ipcRenderer.invoke('circle:start'),

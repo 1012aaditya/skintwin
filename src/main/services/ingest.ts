@@ -63,7 +63,8 @@ export const SCREEN_MERGE_MS = 15 * 60_000
  * isn't a readable product. A circle that only caught an ingredient list fills in the
  * ingredients of the product circled just before it (if that one had none).
  */
-export function productFromScreenRead(read: ScreenRead, now: string, recent: Product | null): Product | null {
+/** `origin`: a region circled on screen, or a photo file dropped onto the island. */
+export function productFromScreenRead(read: ScreenRead, now: string, recent: Product | null, origin: 'circle' | 'image' = 'circle'): Product | null {
   const name = sanitizeText(read.name, 200)
   const brand = sanitizeText(read.brand, 120) ?? ''
   const ingredientsText = sanitizeText(read.ingredientsText, 6000)
@@ -90,7 +91,33 @@ export function productFromScreenRead(read: ScreenRead, now: string, recent: Pro
     url: null,
     retailer: null,
     claims: [...new Set(claims)].slice(0, 10),
-    source: { kind: 'screen', label: `Read from your screen (${confidence})`, url: null, fetchedAt: now, verified: false },
+    source: { kind: 'screen', label: `${origin === 'image' ? 'Read from a photo you dropped' : 'Read from your screen'} (${confidence})`, url: null, fetchedAt: now, verified: false },
+    createdAt: now
+  }
+}
+
+/** A product identified from a page the user dropped. Null if the page isn't one skincare product. */
+export function productFromPageRead(read: Omit<ScreenRead, 'confidence'> & { confidence: string }, pageUrl: string, now: string): Product | null {
+  const name = sanitizeText(read.name, 200)
+  if (!read.isSkincareProduct || !name) return null
+  const brand = sanitizeText(read.brand, 120) ?? ''
+  const ingredientsText = sanitizeText(read.ingredientsText, 6000)
+  const claims = read.claims.map((c) => sanitizeText(c, 80)).filter((c): c is string => !!c)
+  const host = new URL(pageUrl).hostname.replace(/^www\./, '')
+  return {
+    id: `link:${createHash('sha256').update(`${brand}|${name}`.toLowerCase()).digest('hex').slice(0, 16)}`,
+    name,
+    brand,
+    category: guessCategory(`${name} ${claims.join(' ')}`),
+    sizeMl: parseSizeMl(`${read.sizeText ?? ''} ${name}`),
+    description: null,
+    imageUrl: null,
+    ingredients: ingredientsText ? splitIngredientText(ingredientsText).slice(0, 120) : [],
+    price: null, // never quoted from a page we only skimmed
+    url: pageUrl,
+    retailer: host,
+    claims: [...new Set(claims)].slice(0, 10),
+    source: { kind: 'browser', label: `From the page you dropped (${host}, ${read.confidence} confidence)`, url: pageUrl, fetchedAt: now, verified: false },
     createdAt: now
   }
 }

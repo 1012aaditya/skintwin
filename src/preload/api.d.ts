@@ -9,10 +9,11 @@ export type CompanionCommand =
   | { type: 'analyze-product'; productId: string }
   | { type: 'compare-product'; productId: string }
   | { type: 'detection-failed'; reason: string }
-  | { type: 'circle-reading'; requestId: string }
+  /** source: a circled region, a dropped photo, or a dropped page link */
+  | { type: 'circle-reading'; requestId: string; source?: 'circle' | 'image' | 'link' }
   | { type: 'circle-progress'; requestId: string; stage: 'researching' }
   | { type: 'circle-result'; requestId: string; productId: string }
-  | { type: 'circle-failed'; requestId: string | null; kind: 'screen_denied' | 'screen_unreadable' | 'provider'; message: string }
+  | { type: 'circle-failed'; requestId: string | null; kind: 'screen_denied' | 'screen_unreadable' | 'page_unreadable' | 'provider'; message: string }
 
 export type MediaStatus = 'not-determined' | 'granted' | 'denied' | 'restricted' | 'unknown'
 
@@ -40,6 +41,8 @@ export interface SkinTwinApi {
     setMode(mode: 'orb' | 'compact' | 'expanded'): Promise<void>
     setPinned(pinned: boolean): Promise<void>
     setClickThrough(through: boolean): Promise<void>
+    /** where the island's solid pill is, in window coordinates, so drags over it are caught */
+    setSolidRect(rect: { x: number; y: number; w: number; h: number } | null): Promise<void>
     dragStart(): Promise<void>
     dragMove(dx: number, dy: number): Promise<void>
     dragEnd(): Promise<void>
@@ -48,6 +51,8 @@ export interface SkinTwinApi {
     islandInfo(): Promise<{ notch: boolean; barHeight: number; notchWidth: number }>
     onCommand(fn: (c: CompanionCommand) => void): () => void
   }
+  /** Something dropped onto the island: a product photo (already JPEG) or a product page link. */
+  drop: { image(jpegBase64: string): Promise<void>; link(url: string): Promise<void> }
   circle: {
     start(): Promise<void>
     done(result: { points: { x: number; y: number }[]; width: number; height: number } | null): Promise<void>
