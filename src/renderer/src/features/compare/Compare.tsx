@@ -9,7 +9,7 @@ import { Badge, Button, Card, EmptyState } from '@renderer/components/ui'
 import { cn } from '@renderer/lib/cn'
 import { formatPrice } from '@renderer/lib/format'
 import { navigate, useRoute } from '@renderer/lib/router'
-import { useCatalog, useDb, useProductMap, useRoutineProducts } from '@renderer/lib/store'
+import { useCatalog, useDb, useMatchContext, useProductMap } from '@renderer/lib/store'
 
 type View = 'side' | 'differences' | 'ingredients' | 'recommendation'
 
@@ -18,7 +18,7 @@ export function Compare() {
   const { query } = useRoute()
   const products = useProductMap()
   const catalog = useCatalog()
-  const routineProducts = useRoutineProducts()
+  const matchCtx = useMatchContext()
   const [view, setView] = useState<View>('side')
   const [adding, setAdding] = useState(false)
   const [useFor, setUseFor] = useState<Product | null>(null)
@@ -28,12 +28,12 @@ export function Compare() {
   useEffect(() => {
     if (ids.length === 1) {
       const base = products.get(ids[0]!)!
-      const alts = alternativesFor(base, catalog, db.profile, routineProducts).slice(0, 2)
+      const alts = alternativesFor(base, catalog, db.profile, matchCtx).slice(0, 2)
       if (alts.length) navigate(`/compare?ids=${[base.id, ...alts.map((a) => a.product.id)].map(encodeURIComponent).join(',')}`)
     }
   }, [ids.join(',')]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const rows = useMemo(() => ids.map((id) => products.get(id)!).map((p) => ({ product: p, match: computeMatch(p, db.profile, { routineProducts }) })), [ids.join(','), products, db.profile, routineProducts]) // eslint-disable-line react-hooks/exhaustive-deps
+  const rows = useMemo(() => ids.map((id) => products.get(id)!).map((p) => ({ product: p, match: computeMatch(p, db.profile, matchCtx) })), [ids.join(','), products, db.profile, matchCtx]) // eslint-disable-line react-hooks/exhaustive-deps
   const setIds = (next: string[]) => navigate(`/compare?ids=${next.map(encodeURIComponent).join(',')}`)
   const best = [...rows].filter((r) => r.match.score != null).sort((a, b) => b.match.score! - a.match.score!)[0]
   const bestValue = [...rows].filter((r) => pricePerMl(r.product) != null).sort((a, b) => pricePerMl(a.product)! - pricePerMl(b.product)!)[0]

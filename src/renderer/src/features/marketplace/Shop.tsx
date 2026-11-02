@@ -6,7 +6,7 @@ import { ProductCard, useProductActions } from '@renderer/components/products'
 import { Button, Card, CardHeader, EmptyState, Input, SectionTitle } from '@renderer/components/ui'
 import { cn } from '@renderer/lib/cn'
 import { navigate } from '@renderer/lib/router'
-import { useCatalog, useDb, useOwnedIds, useProductMap, useProviders, useRoutineProducts } from '@renderer/lib/store'
+import { useCatalog, useDb, useOwnedIds, useProductMap, useMatchContext, useProviders } from '@renderer/lib/store'
 import type { Product } from '@shared/models'
 
 export function Shop() {
@@ -15,12 +15,12 @@ export function Shop() {
   const catalog = useCatalog()
   const products = useProductMap()
   const owned = useOwnedIds()
-  const routineProducts = useRoutineProducts()
+  const matchCtx = useMatchContext()
   const [q, setQ] = useState('')
   const [cat, setCat] = useState<ProductCategory | 'all'>('all')
   const [brand, setBrand] = useState<string | null>(null)
   const gaps = routineGaps(db.routines, products)
-  const recs = useMemo(() => recommend({ catalog, profile: db.profile, ownedIds: owned, routineProducts, gaps, limit: 3 }), [catalog, db.profile, owned, routineProducts, gaps])
+  const recs = useMemo(() => recommend({ catalog, profile: db.profile, ownedIds: owned, ...matchCtx, gaps, limit: 3 }), [catalog, db.profile, owned, matchCtx, gaps])
   const brands = [...new Set(catalog.map((p) => p.brand))].sort()
   const cats = [...new Set(catalog.map((p) => p.category))]
   const browse = catalog.filter((p) => (cat === 'all' || p.category === cat) && (!brand || p.brand === brand) && `${p.brand} ${p.name}`.toLowerCase().includes(q.toLowerCase()))

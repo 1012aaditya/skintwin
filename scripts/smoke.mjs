@@ -119,6 +119,26 @@ await clickText(main, 'Restock')
 await shot(main, '09-inventory-restock')
 check(await main.evaluate(() => document.body.innerText.includes('Restock same')), 'restock suggestion shown')
 
+// ---------- Journey D2: reactions → suspects → avoid list (only after confirming) ----------
+await clickText(main, 'My products')
+const niaCard = main.locator('div.glass', { hasText: 'Niacinamide 10%' }).first()
+await niaCard.locator('[data-testid="reaction-toggle"]').click()
+await niaCard.locator('[data-testid="reaction-chips"] button:has-text("Redness")').click()
+await sleep(300)
+check(db().reactions.some((r) => r.productId === 'demo:to-niacinamide' && r.kind === 'redness'), 'one tap logs a reaction from an inventory card')
+const niaIngredients = db().products.find((p) => p.id === 'demo:to-niacinamide').ingredients
+await main.evaluate((ings) => window.skintwin.db.mutate({ type: 'product.createManual', id: 'manual:smoke-twin', product: { name: 'Smoke Twin Serum', brand: 'Test', category: 'serum', sizeMl: null, ingredients: ings, url: null, description: null } }), niaIngredients)
+await main.evaluate(() => window.skintwin.db.mutate({ type: 'reaction.add', productId: 'manual:smoke-twin', kind: 'stinging' }))
+await main.waitForSelector('[data-testid="suspect-list"]')
+check(await main.evaluate(() => document.body.innerText.includes('not proof')), 'suspects shown with honest wording')
+const avoidBefore = db().profile.avoidIngredients.length
+await clickText(main, 'Add to avoid list…')
+check(db().profile.avoidIngredients.length === avoidBefore, 'suspect is not added to the avoid list before confirming')
+await shot(main, '08b-inventory-suspects')
+await main.click('[data-testid="suspect-list"] button:has-text("Yes, avoid")')
+await sleep(300)
+check(db().profile.avoidIngredients.length === avoidBefore + 1, 'confirmed suspect added to the avoid list')
+
 // ---------- Screens ----------
 for (const [route, name] of [
   ['/profile', '10-profile'],
@@ -131,6 +151,7 @@ for (const [route, name] of [
   await go(route)
   await sleep(400)
   await shot(main, name)
+  if (name === '12-insights') check(!!(await main.$('[data-testid="insights-reactions"] [data-testid="reaction-chips"]')), 'Product Insights offers one-tap reactions')
 }
 
 // ---------- Journey B: skin analysis (dev mock — no YouCam key) ----------
@@ -203,6 +224,14 @@ await sleep(700)
 ib = await islandBounds()
 check(ib.b.height < 400, 'the answer stays in the island as a short verdict')
 await shot(companion, '20-island-result')
+await companion.click('[aria-label="My skin reacted to this"]')
+await companion.waitForSelector('[data-testid="island-react"]')
+await sleep(400)
+await shot(companion, '20-island-react')
+await companion.click('[data-testid="island-react"] button:has-text("Itching")')
+await sleep(300)
+check(db().reactions.some((r) => r.productId === demoId && r.kind === 'itching'), 'one tap in the island logs a reaction to the verdict’s product')
+await companion.waitForSelector('button:has-text("Details")')
 await companion.click('button:has-text("Details")')
 await companion.waitForSelector('text=Here’s what I found for you')
 await sleep(700)

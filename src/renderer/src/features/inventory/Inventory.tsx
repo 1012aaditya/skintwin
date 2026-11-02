@@ -3,11 +3,12 @@ import { useState } from 'react'
 import { INVENTORY_STATUS, label, type InventoryItem, type InventoryStatus, type Product } from '@shared/models'
 import { alternativesFor } from '@shared/scoring'
 import { MatchBadge, ProductArt, ProductPicker } from '@renderer/components/products'
+import { ReactionToggle, SuspectList } from '@renderer/components/reactions'
 import { Badge, Bar, Button, Card, CardHeader, Dialog, EmptyState, Field, Input, SectionTitle, Select, Tabs, Textarea } from '@renderer/components/ui'
 import { cn } from '@renderer/lib/cn'
 import { daysUntil, formatDate } from '@renderer/lib/format'
 import { navigate } from '@renderer/lib/router'
-import { mutate, useCatalog, useDb, useMatch, useProductMap, useRoutineProducts } from '@renderer/lib/store'
+import { mutate, useCatalog, useDb, useMatch, useMatchContext, useProductMap } from '@renderer/lib/store'
 
 const STATUS_TONE: Record<InventoryStatus, 'success' | 'warn' | 'danger' | 'neutral' | 'lilac'> = {
   in_use: 'success',
@@ -76,6 +77,7 @@ export function Inventory() {
 
       {tab === 'products' && (
         <>
+          <SuspectList />
           {cats.length > 1 && (
             <div className="flex flex-wrap gap-2">
               {['all', ...cats].map((c) => (
@@ -179,6 +181,7 @@ function InventoryCard({ item, product, onEdit }: { item: InventoryItem; product
           </div>
         )}
       </div>
+      <ReactionToggle productId={product.id} className="mt-3 border-t border-white/8 pt-2.5" />
     </div>
   )
 }
@@ -264,7 +267,7 @@ function Restock() {
   const db = useDb()
   const products = useProductMap()
   const catalog = useCatalog()
-  const routineProducts = useRoutineProducts()
+  const matchCtx = useMatchContext()
   const low = db.inventory
     .filter((i) => i.status === 'running_low' || isExpired(i) || (i.remainingPct != null && i.remainingPct <= 20 && i.status !== 'finished' && i.status !== 'archived'))
     .map((i) => ({ item: i, product: products.get(i.productId) }))
@@ -273,7 +276,7 @@ function Restock() {
   return (
     <div className="space-y-4">
       {low.map(({ item, product }) => (
-        <RestockRow key={item.id} item={item} product={product} alternatives={alternativesFor(product, catalog, db.profile, routineProducts).slice(0, 3)} />
+        <RestockRow key={item.id} item={item} product={product} alternatives={alternativesFor(product, catalog, db.profile, matchCtx).slice(0, 3)} />
       ))}
     </div>
   )

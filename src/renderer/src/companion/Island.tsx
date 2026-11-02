@@ -1,9 +1,11 @@
-import { AlertTriangle, CheckCircle2, ChevronDown, CircleAlert, Keyboard, Loader2, MessageCircle, Mic, ScanSearch, Square, X } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronDown, CircleAlert, Keyboard, Loader2, MessageCircle, Mic, ScanSearch, ShieldAlert, Square, X } from 'lucide-react'
 import type { AssistantReply } from '@shared/assistant'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Orb, type OrbMood } from '@renderer/components/Orb'
+import { ReactionChips } from '@renderer/components/reactions'
 import { cn } from '@renderer/lib/cn'
+import { useSnapshot } from '@renderer/lib/store'
 import type { CompanionContext } from './machine'
 import { VERDICTS } from './views'
 
@@ -21,13 +23,15 @@ export interface IslandInfo {
 }
 export const NO_NOTCH: IslandInfo = { notch: false, barHeight: 0, notchWidth: 0 }
 
-type Shape = 'idle' | 'hover' | 'listening' | 'processing' | 'result'
+type Shape = 'idle' | 'hover' | 'listening' | 'processing' | 'result' | 'react'
 
 /** A fresh answer shown in the pill: the verdict and one line, with the full answer a tap away. */
 export interface IslandResult {
   verdict: AssistantReply['verdict']
   summary: string
   aboutProduct: boolean
+  /** the product the verdict is about, so a skin reaction can be logged against it */
+  productId: string | null
 }
 
 /** Height of the row level with the notch (or the pill's own height without one). */
@@ -41,6 +45,7 @@ export function islandSize(info: IslandInfo, shape: Shape) {
   if (shape === 'hover') return { width: 360, height: top + 54 }
   if (shape === 'listening') return { width: 380, height: top + 58 }
   if (shape === 'result') return { width: 420, height: top + 78 }
+  if (shape === 'react') return { width: 420, height: top + 118 }
   return { width: 400, height: top + 64 }
 }
 
@@ -92,6 +97,9 @@ export function IslandBar({
   onDismiss: () => void
 }) {
   const [hover, setHover] = useState(false)
+  const [reacting, setReacting] = useState(false)
+  // a new answer (the result object itself is rebuilt on every render) closes the reaction row
+  useEffect(() => setReacting(false), [result?.summary, result?.productId])
   const leaveTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   useEffect(() => () => clearTimeout(leaveTimer.current), [])
   // A result tucks itself away after a while, unless the pointer is resting on it.
@@ -100,7 +108,7 @@ export function IslandBar({
     const t = setTimeout(onDismiss, RESULT_TIMEOUT_MS)
     return () => clearTimeout(t)
   }, [result, hover, onDismiss])
-  const shape: Shape = ctx.state === 'listening' ? 'listening' : ctx.state === 'processing' ? 'processing' : result ? 'result' : hover ? 'hover' : 'idle'
+  const shape: Shape = ctx.state === 'listening' ? 'listening' : ctx.state === 'processing' ? 'processing' : result ? (reacting && result.productId ? 'react' : 'result') : hover ? 'hover' : 'idle'
   const { width, height } = islandSize(info, shape)
   const top = topRow(info)
 
@@ -164,7 +172,8 @@ export function IslandBar({
                 </Round>
               </>
             )}
-            {shape === 'result' && result && <ResultRow result={result} onDetails={onDetails} onDismiss={onDismiss} />}
+            {shape === 'result' && result && <ResultRow result={result} onDetails={onDetails} onDismiss={onDismiss} onReact={result.productId ? () => setReacting(true) : undefined} />}
+            {shape === 'react' && result?.productId && <ReactRow productId={result.productId} onBack={() => setReacting(false)} />}
             {shape === 'processing' && (
               <div className="flex min-w-0 flex-1 flex-col gap-2">
                 <div className="flex items-center gap-2.5">
@@ -185,7 +194,7 @@ export function IslandBar({
   )
 }
 
-function ResultRow({ result, onDetails, onDismiss }: { result: IslandResult; onDetails: () => void; onDismiss: () => void }) {
+function ResultRow({ result, onDetails, onDismiss, onReact }: { result: IslandResult; onDetails: () => void; onDismiss: () => void; onReact?: () => void }) {
   const v = VERDICTS[result.verdict]
   const Icon = !result.aboutProduct ? MessageCircle : v.tone === 'good' ? CheckCircle2 : v.tone === 'unknown' ? CircleAlert : AlertTriangle
   return (
@@ -198,10 +207,42 @@ function ResultRow({ result, onDetails, onDismiss }: { result: IslandResult; onD
       <button onClick={onDetails} className="flex h-8 shrink-0 items-center gap-1 rounded-full bg-white/12 px-3 text-[12.5px] font-medium transition-colors hover:bg-white/20">
         Details <ChevronDown className="h-3.5 w-3.5" />
       </button>
+      {onReact && (
+        <Round label="My skin reacted to this" onClick={onReact}>
+          <ShieldAlert />
+        </Round>
+      )}
       <Round label="Dismiss" onClick={onDismiss}>
         <X />
       </Round>
     </>
+  )
+}
+
+/** One tap logs what the skin did; the pill folds back to the verdict a moment later. */
+function ReactRow({ productId, onBack }: { productId: string; onBack: () => void }) {
+  const loaded = !!useSnapshot()
+  const back = useRef<ReturnType<typeof setTimeout>>(undefined)
+  useEffect(() => () => clearTimeout(back.current), [])
+  if (!loaded) return null
+  return (
+    <div className="flex min-w-0 flex-1 flex-col gap-1.5 self-start pt-1" data-testid="island-react">
+      <div className="flex items-center gap-2">
+        <Round label="Back" onClick={onBack}>
+          <ArrowLeft />
+        </Round>
+        <p className="text-[13px] font-medium">What did your skin do?</p>
+      </div>
+      <ReactionChips
+        productId={productId}
+        dense
+        history={false}
+        onLogged={() => {
+          clearTimeout(back.current)
+          back.current = setTimeout(onBack, 1400)
+        }}
+      />
+    </div>
   )
 }
 

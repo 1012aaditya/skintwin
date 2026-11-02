@@ -1,5 +1,6 @@
 import { analyzeIngredients, type IngredientInfo } from './ingredients'
-import { label, type Product, type ProductCategory, type Routine, type SkinProfile } from './models'
+import { label, type Product, type ProductCategory, type Reaction, type Routine, type SkinProfile } from './models'
+import { ingredientKey, onAvoidList, suspectsIn, type Suspect } from './reactions'
 
 /**
  * Rule-based, explainable compatibility estimate. Every point added or removed
@@ -30,6 +31,9 @@ export interface MatchResult {
 
 export interface MatchContext {
   routineProducts: Product[]
+  /** reactions the user logged, and ingredients shared by the products they reacted to */
+  reactions?: Reaction[]
+  suspects?: Suspect[]
 }
 
 const uniqueBy = <T>(arr: T[], key: (t: T) => string) => {
@@ -163,7 +167,9 @@ export function computeMatch(product: Product, profile: SkinProfile, ctx: MatchC
   for (const avoid of profile.avoidIngredients) {
     const a = avoid.toLowerCase().trim()
     if (!a) continue
-    const hit = product.ingredients.find((i) => i.toLowerCase().includes(a))
+    // also match synonyms the ingredient reference knows, e.g. "Parfum" for "Fragrance"
+    const key = ingredientKey(avoid)?.key
+    const hit = product.ingredients.find((i) => i.toLowerCase().includes(a) || (key && ingredientKey(i)?.key === key))
     if (hit) {
       score -= 25
       base.mismatches.push({ text: `Contains “${hit}”, which is on your avoid list.` })
@@ -172,6 +178,19 @@ export function computeMatch(product: Product, profile: SkinProfile, ctx: MatchC
   if (claims.some((c) => c.includes('non-comedogenic')) && prefs.has('non_comedogenic')) {
     score += 3
     base.positives.push({ text: 'Labelled non-comedogenic by the brand.' })
+  }
+
+  // What the user's own skin told us
+  const own = (ctx.reactions ?? []).filter((r) => r.productId === product.id)
+  if (own.length) {
+    score -= 15
+    const kinds = [...new Set(own.map((r) => label(r.kind).toLowerCase()))].join(', ')
+    base.cautions.push(`You logged ${kinds} after using this (${own.length === 1 ? 'once' : `${own.length} times`}).`)
+  }
+  for (const s of suspectsIn(product, ctx.suspects ?? [])) {
+    if (onAvoidList(s, profile.avoidIngredients)) continue // already a mismatch above
+    score -= 5
+    base.cautions.push(`Contains ${s.name}, which is in common between ${s.productIds.length} products you reacted to — a pattern, not proof.`)
   }
 
   // Ingredient-level cautions
@@ -252,14 +271,17 @@ export function recommend(args: {
   profile: SkinProfile
   ownedIds: Set<string>
   routineProducts: Product[]
+  reactions?: Reaction[]
+  suspects?: Suspect[]
   gaps: ProductCategory[]
   limit?: number
 }): Recommendation[] {
+  const ctx: MatchContext = { routineProducts: args.routineProducts, reactions: args.reactions, suspects: args.suspects }
   const ownedProducts = args.catalog.filter((p) => args.ownedIds.has(p.id))
   const recs = args.catalog
     .filter((p) => !args.ownedIds.has(p.id) && !ownedProducts.some((o) => isSameProduct(o, p)))
     .map((product) => {
-      const match = computeMatch(product, args.profile, { routineProducts: args.routineProducts })
+      const match = computeMatch(product, args.profile, ctx)
       const fillsGap = args.gaps.includes(product.category) ? product.category : null
       const reason = fillsGap
         ? `Fills a gap: your routine has no ${label(fillsGap).toLowerCase()} yet.`
@@ -271,7 +293,7 @@ export function recommend(args: {
   return recs.slice(0, args.limit ?? 6)
 }
 
-export function alternativesFor(product: Product, catalog: Product[], profile: SkinProfile, routineProducts: Product[]) {
+export function alternativesFor(product: Product, catalog: Product[], profile: SkinProfile, ctx: MatchContext) {
   const groups = new Set(identifiedIngredients(product).map((i) => i.activeGroup).filter(Boolean))
   return catalog
     .filter((p) => !isSameProduct(p, product))
@@ -280,7 +302,7 @@ export function alternativesFor(product: Product, catalog: Product[], profile: S
         p.category === product.category ||
         identifiedIngredients(p).some((i) => i.activeGroup && groups.has(i.activeGroup))
     )
-    .map((p) => ({ product: p, match: computeMatch(p, profile, { routineProducts }) }))
+    .map((p) => ({ product: p, match: computeMatch(p, profile, ctx) }))
     .sort((a, b) => (b.match.score ?? 0) - (a.match.score ?? 0))
     .slice(0, 4)
 }

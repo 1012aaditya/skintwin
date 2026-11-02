@@ -8,6 +8,7 @@ import {
   OnboardingSchema,
   PermissionsSchema,
   ProductSchema,
+  REACTION_KINDS,
   SettingsSchema,
   SkinProfileSchema,
   type Database,
@@ -98,6 +99,16 @@ export const MutationSchema = z.discriminatedUnion('type', [
       })
       .partial()
   }),
+  z.object({
+    type: z.literal('reaction.add'),
+    /** lets the caller undo the reaction it just logged */
+    id: z.string().max(80).optional(),
+    productId: z.string(),
+    kind: z.enum(REACTION_KINDS),
+    note: z.string().max(300).optional(),
+    at: z.iso.datetime().optional()
+  }),
+  z.object({ type: z.literal('reaction.delete'), id: z.string() }),
   z.object({ type: z.literal('analysis.delete'), id: z.string() }),
   z.object({ type: z.literal('analysis.deleteAll') }),
   z.object({ type: z.literal('conversations.deleteAll') }),
@@ -237,6 +248,15 @@ export function applyMutation(input: Database, op: Mutation, env: MutationEnv): 
         privacy: { ...db.settings.privacy, ...op.patch.privacy }
       }
       if (op.patch.privacy?.storeConversations === false) db.conversations = []
+      break
+    case 'reaction.add':
+      if (!productExists(op.productId)) throw new MutationError('Unknown product')
+      if (op.id && db.reactions.some((r) => r.id === op.id)) break
+      db.reactions.unshift({ id: op.id ?? env.newId('react'), productId: op.productId, kind: op.kind, note: op.note?.trim() ?? '', at: op.at ?? now })
+      db.reactions = db.reactions.slice(0, 500)
+      break
+    case 'reaction.delete':
+      db.reactions = db.reactions.filter((r) => r.id !== op.id)
       break
     case 'analysis.delete':
       db.analyses = db.analyses.filter((a) => a.id !== op.id)

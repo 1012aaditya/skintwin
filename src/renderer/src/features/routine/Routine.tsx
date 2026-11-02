@@ -4,10 +4,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { FREQUENCIES, label, type Product, type RoutinePeriod, type RoutineStep } from '@shared/models'
 import { computeMatch, recommend, routineGaps } from '@shared/scoring'
 import { ProductArt, ProductCard, ProductPicker, ProductRow, RoutinePeriodDialog } from '@renderer/components/products'
+import { ReactionToggle } from '@renderer/components/reactions'
 import { Badge, Button, Card, CardHeader, EmptyState, Input, ProgressRing, SectionTitle, Select, Tabs, Toggle } from '@renderer/components/ui'
 import { cn } from '@renderer/lib/cn'
 import { navigate } from '@renderer/lib/router'
-import { mutate, todayKey, useCatalog, useDb, useOwnedIds, useProductMap, useRoutineProducts } from '@renderer/lib/store'
+import { mutate, todayKey, useCatalog, useDb, useOwnedIds, useMatchContext, useProductMap } from '@renderer/lib/store'
 
 const ESSENTIALS = [
   { key: 'cleanser', label: 'Cleansing', cats: ['cleanser'] },
@@ -37,7 +38,8 @@ export function Routine() {
   const db = useDb()
   const products = useProductMap()
   const [tab, setTab] = useState<'routine' | 'recommendations' | 'today'>('routine')
-  const routineProducts = useRoutineProducts()
+  const matchCtx = useMatchContext()
+  const routineProducts = matchCtx.routineProducts
 
   const coverage = ESSENTIALS.map((e) => {
     const periods: RoutinePeriod[] = e.key === 'sunscreen' ? ['am'] : ['am', 'pm']
@@ -48,12 +50,12 @@ export function Routine() {
   const cautions = useMemo(() => {
     const out = new Set<string>()
     for (const p of routineProducts) {
-      const m = computeMatch(p, db.profile, { routineProducts })
+      const m = computeMatch(p, db.profile, matchCtx)
       m.cautions.filter((c) => c.includes('alternate nights')).forEach((c) => out.add(c))
       m.mismatches.forEach((x) => out.add(`${p.name}: ${x.text}`))
     }
     return [...out].slice(0, 3)
-  }, [routineProducts, db.profile])
+  }, [routineProducts, matchCtx, db.profile])
 
   return (
     <div className="space-y-6">
@@ -273,6 +275,7 @@ function StepItem({ index, step, product, period, onDragEnd, onMove, isFirst, is
             ))}
           </Select>
           <Input defaultValue={step.notes} placeholder="Notes, e.g. pea-sized amount" aria-label="Notes" onBlur={(e) => e.target.value !== step.notes && mutate({ type: 'routine.updateStep', period, stepId: step.id, patch: { notes: e.target.value } })} />
+          <ReactionToggle productId={product.id} className="col-span-2" />
           <div className="col-span-2 flex items-center justify-between">
             <Toggle checked={step.enabled} onChange={(v) => mutate({ type: 'routine.updateStep', period, stepId: step.id, patch: { enabled: v } })} label="Step enabled" />
             <div className="flex gap-1">
@@ -338,9 +341,9 @@ function Suggestions() {
   const products = useProductMap()
   const catalog = useCatalog()
   const owned = useOwnedIds()
-  const routineProducts = useRoutineProducts()
+  const matchCtx = useMatchContext()
   const gaps = routineGaps(db.routines, products)
-  const recs = recommend({ catalog, profile: db.profile, ownedIds: owned, routineProducts, gaps, limit: 6 })
+  const recs = recommend({ catalog, profile: db.profile, ownedIds: owned, ...matchCtx, gaps, limit: 6 })
   if (catalog.length === 0) return <EmptyState title="No catalog available" body="Recommendations need a product catalog. Enable the demo catalog or connect a partner catalog." />
   return (
     <div className="space-y-4">

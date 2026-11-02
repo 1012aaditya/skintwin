@@ -67,7 +67,7 @@ describe('compatibility engine', () => {
   })
 
   it('alternatives share the category or active', () => {
-    const alts = alternativesFor(product('to-niacinamide'), DEMO_CATALOG, oilyAcne, [])
+    const alts = alternativesFor(product('to-niacinamide'), DEMO_CATALOG, oilyAcne, { routineProducts: [] })
     expect(alts.length).toBeGreaterThan(0)
     expect(alts.every((a) => a.product.id !== 'demo:to-niacinamide')).toBe(true)
   })
@@ -87,6 +87,6 @@ describe('same-product detection', () => {
     expect(isSameProduct(web, product('minimalist-niacinamide'))).toBe(false)
     const m = computeMatch(web, oilyAcne, { routineProducts: [product('to-niacinamide')] })
     expect(m.routineOverlap[0]?.text).toMatch(/already use this product/)
-    expect(alternativesFor(web, DEMO_CATALOG, oilyAcne, []).some((a) => a.product.id === 'demo:to-niacinamide')).toBe(false)
+    expect(alternativesFor(web, DEMO_CATALOG, oilyAcne, { routineProducts: [] }).some((a) => a.product.id === 'demo:to-niacinamide')).toBe(false)
   })
 })

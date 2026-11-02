@@ -281,7 +281,7 @@ export function Companion() {
                 onSend={() => void finishListening()}
                 onCancel={cancel}
                 onMenu={() => void window.skintwin.companion.menu({ hasProduct: !!ctx.productId })}
-                result={compactAnswer && ctx.response ? { verdict: ctx.response.reply.verdict, summary: ctx.response.reply.summary || ctx.response.reply.answer, aboutProduct: !!ctx.productId } : null}
+                result={compactAnswer && ctx.response ? { verdict: ctx.response.reply.verdict, summary: ctx.response.reply.summary || ctx.response.reply.answer, aboutProduct: !!ctx.productId, productId: ctx.productId } : null}
                 onDetails={showDetails}
                 onDismiss={dismissResult}
               />

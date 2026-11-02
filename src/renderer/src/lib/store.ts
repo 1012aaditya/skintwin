@@ -2,7 +2,8 @@ import { useMemo, useSyncExternalStore, useEffect, useState } from 'react'
 import type { ProviderStatus } from '@shared/assistant'
 import type { Product, Snapshot } from '@shared/models'
 import type { Mutation } from '@shared/mutations'
-import { computeMatch, type MatchResult } from '@shared/scoring'
+import { reactionSuspects, type Suspect } from '@shared/reactions'
+import { computeMatch, type MatchContext, type MatchResult } from '@shared/scoring'
 import { toast } from './toast'
 
 /**
@@ -67,10 +68,24 @@ export function useRoutineProducts(): Product[] {
   )
 }
 
-export function useMatch(product: Product | null | undefined): MatchResult | null {
+/** Ingredients shared by products the user reacted to (a pattern, not proof). */
+export function useSuspects(): Suspect[] {
+  const db = useDb()
+  return useMemo(() => reactionSuspects(db.reactions, db.products), [db.reactions, db.products])
+}
+
+/** Everything the match engine knows about this user beyond their profile. */
+export function useMatchContext(): MatchContext {
   const db = useDb()
   const routineProducts = useRoutineProducts()
-  return useMemo(() => (product ? computeMatch(product, db.profile, { routineProducts }) : null), [product, db.profile, routineProducts])
+  const suspects = useSuspects()
+  return useMemo(() => ({ routineProducts, reactions: db.reactions, suspects }), [routineProducts, db.reactions, suspects])
+}
+
+export function useMatch(product: Product | null | undefined): MatchResult | null {
+  const db = useDb()
+  const ctx = useMatchContext()
+  return useMemo(() => (product ? computeMatch(product, db.profile, ctx) : null), [product, db.profile, ctx])
 }
 
 /** Products that come from a catalog (demo or partner) — candidates for recommendations. */

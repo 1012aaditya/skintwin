@@ -7,7 +7,7 @@ import { MatchBadge, PriceTag, ProductArt, ProductCard } from '@renderer/compone
 import { Badge, Button, Card, CardHeader, ProgressRing } from '@renderer/components/ui'
 import { formatDate, greeting } from '@renderer/lib/format'
 import { navigate } from '@renderer/lib/router'
-import { todayKey, useCatalog, useDb, useMatch, useOwnedIds, useProductMap, useRoutineProducts } from '@renderer/lib/store'
+import { todayKey, useCatalog, useDb, useMatch, useOwnedIds, useMatchContext, useProductMap } from '@renderer/lib/store'
 import { summaryScore } from '../analysis/Analyze'
 import { profileCompleteness } from '../profile/fields'
 
@@ -16,7 +16,7 @@ export function Discover() {
   const products = useProductMap()
   const catalog = useCatalog()
   const owned = useOwnedIds()
-  const routineProducts = useRoutineProducts()
+  const matchCtx = useMatchContext()
   const detected = db.detected ? products.get(db.detected.productId) : undefined
   const detectedMatch = useMatch(detected)
   const latest = db.analyses[0]
@@ -26,7 +26,7 @@ export function Discover() {
     return { p, total: steps.length, done: steps.filter((s) => s.completions.includes(today)).length }
   })
   const low = db.inventory.filter((i) => i.status === 'running_low')
-  const recs = recommend({ catalog, profile: db.profile, ownedIds: owned, routineProducts, gaps: routineGaps(db.routines, products), limit: 3 })
+  const recs = recommend({ catalog, profile: db.profile, ownedIds: owned, ...matchCtx, gaps: routineGaps(db.routines, products), limit: 3 })
   const completeness = profileCompleteness(db.profile)
   const lastConv = db.conversations[0]
 

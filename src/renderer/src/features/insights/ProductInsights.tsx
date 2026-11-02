@@ -2,13 +2,15 @@ import { ArrowLeftRight, CheckCircle2, ChevronRight, CircleAlert, FlaskConical, 
 import { useState } from 'react'
 import { analyzeIngredients } from '@shared/ingredients'
 import { label, type Product, type ProductCategory } from '@shared/models'
+import { suspectsIn } from '@shared/reactions'
 import { alternativesFor, type MatchResult } from '@shared/scoring'
+import { ReactionChips, SuspectList } from '@renderer/components/reactions'
 import { MatchBadge, PriceTag, ProductActionBar, ProductArt, SourceBadge } from '@renderer/components/products'
 import { Badge, Button, Card, CardHeader, EmptyState, ProgressRing, SectionTitle, Tabs } from '@renderer/components/ui'
 import { cn } from '@renderer/lib/cn'
 import { formatDate } from '@renderer/lib/format'
 import { navigate } from '@renderer/lib/router'
-import { useCatalog, useDb, useMatch, useOwnedIds, useRoutineProducts } from '@renderer/lib/store'
+import { useCatalog, useDb, useMatch, useMatchContext, useOwnedIds, useSuspects } from '@renderer/lib/store'
 
 const ROUTINE_ORDER: ProductCategory[] = ['cleanser', 'toner', 'essence', 'serum', 'treatment', 'exfoliant', 'eye', 'moisturizer', 'sunscreen']
 
@@ -75,8 +77,8 @@ function ProductHero({ product }: { product: Product }) {
 function Overview({ product, match, onTab }: { product: Product; match: MatchResult; onTab: (t: 'ingredients' | 'alternatives') => void }) {
   const db = useDb()
   const catalog = useCatalog()
-  const routineProducts = useRoutineProducts()
-  const alts = alternativesFor(product, catalog, db.profile, routineProducts).filter((a) => (a.match.score ?? 0) > (match.score ?? 0)).slice(0, 3)
+  const matchCtx = useMatchContext()
+  const alts = alternativesFor(product, catalog, db.profile, matchCtx).filter((a) => (a.match.score ?? 0) > (match.score ?? 0)).slice(0, 3)
   return (
     <div className="grid grid-cols-2 gap-5 max-[1400px]:grid-cols-1">
       <Card className="p-5">
@@ -108,6 +110,12 @@ function Overview({ product, match, onTab }: { product: Product; match: MatchRes
               <li key={p.text} className="flex gap-2">
                 <CircleAlert className="mt-0.5 h-4 w-4 shrink-0 text-rose-300" />
                 {p.text}
+              </li>
+            ))}
+            {match.cautions.slice(0, 2).map((c) => (
+              <li key={c} className="flex gap-2 text-ink-soft">
+                <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+                {c}
               </li>
             ))}
           </ul>
@@ -162,8 +170,22 @@ function Overview({ product, match, onTab }: { product: Product; match: MatchRes
           )}
         </div>
       </Card>
+      <ReactionCard product={product} />
       <RoutineFit product={product} />
     </div>
+  )
+}
+
+function ReactionCard({ product }: { product: Product }) {
+  const suspects = suspectsIn(product, useSuspects())
+  return (
+    <Card className="col-span-full p-5" data-testid="insights-reactions">
+      <CardHeader icon={<CircleAlert />} title="Did your skin react to this?" subtitle="One tap logs it. SkinTwin looks for ingredients your reactions have in common." />
+      <div className="mt-3">
+        <ReactionChips productId={product.id} />
+      </div>
+      {suspects.length > 0 && <SuspectList suspects={suspects} className="mt-4" />}
+    </Card>
   )
 }
 
@@ -260,8 +282,8 @@ function ReasonList({ title, icon, items, empty }: { title: string; icon: React.
 function AlternativesTab({ product }: { product: Product }) {
   const db = useDb()
   const catalog = useCatalog()
-  const routineProducts = useRoutineProducts()
-  const alts = alternativesFor(product, catalog, db.profile, routineProducts)
+  const matchCtx = useMatchContext()
+  const alts = alternativesFor(product, catalog, db.profile, matchCtx)
   if (!alts.length) return <EmptyState title="No alternatives found" body="There are no similar products in the catalog yet." />
   return (
     <Card className="p-5">

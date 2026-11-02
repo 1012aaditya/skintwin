@@ -3,13 +3,15 @@ import { motion } from 'motion/react'
 import { useState, type ReactNode } from 'react'
 import { label, type Product, type ProductResearch, type ResearchSource, type RoutinePeriod } from '@shared/models'
 import type { AssistantReply } from '@shared/assistant'
+import { suspectsIn } from '@shared/reactions'
 import { alternativesFor, pricePerMl, type MatchResult } from '@shared/scoring'
 import { Orb } from '@renderer/components/Orb'
 import { MatchBadge, PriceTag, ProductArt, SourceBadge, useProductActions } from '@renderer/components/products'
+import { ReactionChips, SuspectList } from '@renderer/components/reactions'
 import { ProgressRing } from '@renderer/components/ui'
 import { cn } from '@renderer/lib/cn'
 import { formatPrice } from '@renderer/lib/format'
-import { useCatalog, useDb, useMatch, useProductMap, useRoutineProducts } from '@renderer/lib/store'
+import { useCatalog, useDb, useMatch, useMatchContext, useProductMap, useSuspects } from '@renderer/lib/store'
 import type { CompanionContext, CompanionError, CompanionEvent } from './machine'
 
 type Send = (e: CompanionEvent) => void
@@ -343,6 +345,7 @@ export function ResponseView({ ctx, speaker, onReplay, send }: { ctx: CompanionC
           {picking && <PeriodPicker product={product} conversationId={ctx.conversationId} onDone={() => setPicking(false)} />}
         </div>
       )}
+      {product && <ReactionSection product={product} />}
     </div>
   )
 }
@@ -350,6 +353,15 @@ export function ResponseView({ ctx, speaker, onReplay, send }: { ctx: CompanionC
 function ReferencedRow({ product, onClick }: { product: Product; onClick: () => void }) {
   const match = useMatch(product)
   return <ProductRow product={product} match={match} onClick={onClick} />
+}
+
+/** "My skin reacted" — one tap, inside the companion. */
+function ReactionSection({ product }: { product: Product }) {
+  return (
+    <Section icon={<CircleAlert className="text-rose-300" />} title="Skin reacted after using it?">
+      <ReactionChips productId={product.id} dense />
+    </Section>
+  )
 }
 
 // ---------- Product detected ----------
@@ -431,6 +443,7 @@ export function ProductDetectedView({ ctx, send, onAsk }: { ctx: CompanionContex
           Dismiss
         </button>
       </div>
+      <ReactionSection product={product} />
     </div>
   )
 }
@@ -442,9 +455,10 @@ export function ProductAnalysisView({ ctx, send, onAsk }: { ctx: CompanionContex
   const product = useCurrentProduct(ctx)
   const match = useMatch(product)
   const catalog = useCatalog()
-  const routineProducts = useRoutineProducts()
+  const matchCtx = useMatchContext()
+  const suspects = useSuspects()
   if (!product || !match) return <ErrorView error={{ kind: 'product_unavailable', message: 'Product details are unavailable.' }} send={send} />
-  const alts = alternativesFor(product, catalog, db.profile, routineProducts).slice(0, 3)
+  const alts = alternativesFor(product, catalog, db.profile, matchCtx).slice(0, 3)
   const cautions = [...match.mismatches.map((m) => m.text), ...match.cautions]
   return (
     <div className="space-y-4">
@@ -486,6 +500,9 @@ export function ProductAnalysisView({ ctx, send, onAsk }: { ctx: CompanionContex
           </ul>
         </Section>
       )}
+
+      <SuspectList suspects={suspectsIn(product, suspects)} />
+      <ReactionSection product={product} />
 
       <Section icon={<Layers className="text-lilac-200" />} title="In your routine">
         <p className="text-[13.5px] text-ink/85">{match.routineOverlap[0]?.text ?? 'Doesn’t duplicate anything you already use.'}</p>
@@ -553,12 +570,12 @@ export function ComparisonView({ ctx, send, onAsk }: { ctx: CompanionContext; se
   const db = useDb()
   const product = useCurrentProduct(ctx)
   const catalog = useCatalog()
-  const routineProducts = useRoutineProducts()
+  const matchCtx = useMatchContext()
   const baseMatch = useMatch(product)
   const [selected, setSelected] = useState<string | null>(null)
   const products = useProductMap()
   if (!product || !baseMatch) return <ErrorView error={{ kind: 'product_unavailable', message: 'Nothing to compare.' }} send={send} />
-  const alts = alternativesFor(product, catalog, db.profile, routineProducts).slice(0, 3)
+  const alts = alternativesFor(product, catalog, db.profile, matchCtx).slice(0, 3)
   const rows = [{ product, match: baseMatch }, ...alts]
   // Best = highest match; ties go to the lower price per mL.
   const best = [...rows].sort((a, b) => (b.match.score ?? -1) - (a.match.score ?? -1) || (pricePerMl(a.product) ?? Infinity) - (pricePerMl(b.product) ?? Infinity))[0]
@@ -654,6 +671,7 @@ export function QuickActionsView({ ctx, send }: { ctx: CompanionContext; send: S
         <Tile icon={<PackageCheck />} title={a.owned ? 'Owned' : 'Mark as owned'} done={a.owned} onClick={() => a.markOwned()} />
       </div>
       {picking && <PeriodPicker product={product} conversationId={ctx.conversationId} onDone={() => setPicking(false)} />}
+      <ReactionSection product={product} />
       <div className="flex items-center justify-between px-1 text-[13px]">
         <button onClick={() => window.skintwin.app.open(`/product/${encodeURIComponent(product.id)}`)} className="inline-flex items-center gap-1.5 text-ink/75 hover:text-ink">
           Product insights <ExternalLink className="h-3.5 w-3.5" />

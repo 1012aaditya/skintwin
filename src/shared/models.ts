@@ -329,6 +329,19 @@ export const SettingsSchema = z.object({
 })
 export type Settings = z.infer<typeof SettingsSchema>
 
+export const REACTION_KINDS = ['stinging', 'redness', 'breakout', 'itching', 'dryness', 'other'] as const
+export type ReactionKind = (typeof REACTION_KINDS)[number]
+
+/** Something the user's skin did after using a product — logged by the user, never inferred. */
+export const ReactionSchema = z.object({
+  id: z.string(),
+  productId: z.string(),
+  kind: z.enum(REACTION_KINDS),
+  note: z.string().max(300),
+  at: z.string()
+})
+export type Reaction = z.infer<typeof ReactionSchema>
+
 export const DetectedProductSchema = z.object({
   productId: z.string(),
   tabUrl: z.string(),
@@ -359,6 +372,8 @@ export const DatabaseSchema = z.object({
   actions: z.array(CompanionActionSchema),
   partners: z.array(PartnerSchema),
   listings: z.array(MarketplaceListingSchema),
+  // Added later: defaults keep older saved databases loading.
+  reactions: z.array(ReactionSchema).default([]),
   settings: SettingsSchema,
   detected: DetectedProductSchema.nullable(),
   lastDetectionFailure: DetectionFailureSchema.nullable(),
@@ -439,7 +454,10 @@ export const LABELS: Record<string, string> = {
   alternate_days: 'Alternate days',
   '3x_week': '3× / week',
   '2x_week': '2× / week',
-  weekly: 'Weekly'
+  weekly: 'Weekly',
+  stinging: 'Stinging',
+  breakout: 'Breakout',
+  itching: 'Itching'
 }
 
 export const label = (key: string | null | undefined): string =>
