@@ -316,6 +316,16 @@ export const MarketplaceListingSchema = z.object({
 })
 export type MarketplaceListing = z.infer<typeof MarketplaceListingSchema>
 
+/** A city the user picked for UV alerts. Only its coordinates are sent, to Open-Meteo. */
+export const PlaceSchema = z.object({
+  name: z.string().max(120),
+  region: z.string().max(120).nullable(),
+  country: z.string().max(80).nullable(),
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180)
+})
+export type Place = z.infer<typeof PlaceSchema>
+
 export const CORNERS = ['bottom-right', 'bottom-left', 'top-right', 'top-left'] as const
 /** island = a Dynamic-Island-style pill around the notch at the top of the screen; orb = the floating corner orb */
 export const COMPANION_STYLES = ['island', 'orb'] as const
@@ -343,7 +353,10 @@ export const SettingsSchema = z.object({
     /** show the due routine in the island during these hours (local, 0–24, start inclusive) */
     routineReminders: z.boolean().default(true),
     amWindow: z.tuple([z.number().int().min(0).max(24), z.number().int().min(0).max(24)]).default([6, 11]),
-    pmWindow: z.tuple([z.number().int().min(0).max(24), z.number().int().min(0).max(24)]).default([19, 24])
+    pmWindow: z.tuple([z.number().int().min(0).max(24), z.number().int().min(0).max(24)]).default([19, 24]),
+    /** UV alerts for the user's city, from Open-Meteo; null until they pick a city */
+    sunAlerts: z.boolean().default(true),
+    place: PlaceSchema.nullable().default(null)
   }),
   privacy: z.object({
     storeConversations: z.boolean(),

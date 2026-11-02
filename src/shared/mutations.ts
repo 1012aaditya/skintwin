@@ -7,6 +7,7 @@ import {
   INVENTORY_STATUS,
   OnboardingSchema,
   PermissionsSchema,
+  PlaceSchema,
   ProductSchema,
   REACTION_KINDS,
   SettingsSchema,
@@ -99,7 +100,9 @@ export const MutationSchema = z.discriminatedUnion('type', [
             privacyMode: z.boolean(),
             routineReminders: z.boolean(),
             amWindow: Hours,
-            pmWindow: Hours
+            pmWindow: Hours,
+            sunAlerts: z.boolean(),
+            place: PlaceSchema.nullable()
           })
           .partial(),
         privacy: SettingsSchema.shape.privacy.partial()

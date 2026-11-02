@@ -48,7 +48,7 @@ export function createEmptyDatabase(opts: { demoCatalog: boolean }): Database {
     notices: {},
     settings: {
       voice: { responseEnabled: true, voiceName: null, rate: 1, activation: 'click_to_toggle', textOnly: false },
-      companion: { launchOnStartup: true, alwaysOnTop: true, shortcut: DEFAULT_SHORTCUTS.toggle, voiceShortcut: DEFAULT_SHORTCUTS.voice, corner: 'bottom-right', style: 'island', privacyMode: false, routineReminders: true, amWindow: [6, 11], pmWindow: [19, 24] },
+      companion: { launchOnStartup: true, alwaysOnTop: true, shortcut: DEFAULT_SHORTCUTS.toggle, voiceShortcut: DEFAULT_SHORTCUTS.voice, corner: 'bottom-right', style: 'island', privacyMode: false, routineReminders: true, amWindow: [6, 11], pmWindow: [19, 24], sunAlerts: true, place: null },
       privacy: { storeConversations: true, storeAnalysisHistory: true, sendProfileToAssistant: true }
     },
     detected: null,

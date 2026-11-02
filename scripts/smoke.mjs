@@ -150,9 +150,17 @@ for (const [route, name] of [
   ['/settings', '14-settings-voice'],
   ['/settings?tab=privacy', '15-settings-privacy']
 ]) {
+  if (route === '/settings') {
+    // Sun alerts: a real Open-Meteo forecast for a picked city — or nothing at all if offline
+    await main.evaluate(() => window.skintwin.db.mutate({ type: 'settings.update', patch: { companion: { place: { name: 'Mumbai', region: 'Maharashtra', country: 'India', latitude: 19.07283, longitude: 72.88261 } } } }))
+    const f = await main.evaluate(() => window.skintwin.uv.today())
+    check(f === null || (f.place === 'Mumbai, India' && f.hours.length >= 24 && f.hours.every((h) => h.uv === null || typeof h.uv === 'number')), `UV forecast is real data or nothing (${f ? `${f.hours.length} hours` : 'offline'})`)
+  }
   await go(route)
   await sleep(400)
   await shot(main, name)
+  if (name === '14-settings-voice') await (await main.$('[data-testid="sun-settings"]'))?.screenshot({ path: join(SHOTS, '14b-settings-sun.png') })
+  if (name === '14-settings-voice') check(await main.evaluate(() => document.querySelector('[data-testid="sun-settings"]')?.textContent?.includes('Mumbai')), 'Settings shows the city chosen for sun alerts and the data source')
   if (name === '12-insights') check(!!(await main.$('[data-testid="insights-reactions"] [data-testid="reaction-chips"]')), 'Product Insights offers one-tap reactions')
 }
 

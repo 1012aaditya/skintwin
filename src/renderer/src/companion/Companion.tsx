@@ -9,6 +9,7 @@ import { blobToBase64 } from '@renderer/lib/media'
 import { newRequestId, useProviders, useSnapshot } from '@renderer/lib/store'
 import { scanSummary } from '@shared/skin'
 import { currentActivity } from '@shared/activity'
+import type { UvForecast } from '@shared/sun'
 import { preScanNeeded } from '../features/analysis/ScanNotes'
 import { SCAN_STAGE, SkinCameraView, SkinResultView, type SkinScan } from './SkinScan'
 import { IslandBar, NO_NOTCH, panelClip, pillClip, topRow, type IslandInfo } from './Island'
@@ -158,7 +159,21 @@ export function Companion() {
     const t = setInterval(() => setClock(new Date()), 30_000)
     return () => clearInterval(t)
   }, [])
-  const activity = snap && island ? currentActivity(snap, clock) : null
+  // Today's UV forecast for the user's city (Open-Meteo, fetched by main); null = no alert.
+  const [uv, setUv] = useState<UvForecast | null>(null)
+  const placeKey = snap ? `${snap.settings.companion.sunAlerts}|${snap.settings.companion.place?.latitude}|${snap.settings.companion.place?.longitude}` : ''
+  useEffect(() => {
+    if (!placeKey) return
+    let live = true
+    const load = () => void window.skintwin.uv.today().then((f) => live && setUv(f))
+    load()
+    const t = setInterval(load, 30 * 60_000)
+    return () => {
+      live = false
+      clearInterval(t)
+    }
+  }, [placeKey])
+  const activity = snap && island ? currentActivity(snap, clock, uv) : null
   const privacyRef = useRef(privacy)
   privacyRef.current = privacy
   // Island: a fresh answer stays in the pill as a one-line verdict; the panel opens only on

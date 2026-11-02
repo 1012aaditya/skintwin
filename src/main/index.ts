@@ -18,6 +18,8 @@ import { productFromExtraction, productFromPageRead, productFromScreenRead } fro
 import { AnthropicAssistant, AssistantError, buildContext, RuleBasedAssistant, type AssistantProvider } from './services/llm'
 import { ElevenLabsSpeaker, ElevenLabsTranscriber, LocalWhisperTranscriber, OpenAITranscriber, type SpeechToText, type TextToSpeech } from './services/speech'
 import { PageUnreadableError, ProductResearcher } from './services/research'
+import { fetchUv, searchPlaces } from './services/uv'
+import type { UvForecast } from '@shared/sun'
 import { dropUrl, MAX_DROP_BYTES } from '@shared/drop'
 import { ScreenReader } from './services/vision'
 import { MockSkinAnalysis, YouCamError, YouCamProvider, type MaskLink, type SkinAnalysisProvider } from './services/youcam'
@@ -62,6 +64,7 @@ let shortcutStatus: { toggle: boolean; voice: boolean } = { toggle: false, voice
 let clickThrough = false
 let pillRect: { x: number; y: number; w: number; h: number } | null = null
 let pillForced = false
+let uvCache: { key: string; at: number; forecast: UvForecast } | null = null
 
 /**
  * The island window lets clicks through its transparent parts, and the renderer switches that
@@ -736,6 +739,30 @@ function registerIpc() {
     const url = dropUrl(raw?.url)
     if (!url) return circleFailed('page_unreadable', 'That isn’t a web link SkinTwin can open.')
     void readLink(url)
+  })
+  // UV alerts: city search for Settings, and today's forecast for the island.
+  ipcMain.handle('uv:search', async (_e, query: string) => {
+    try {
+      return ok(await searchPlaces(String(query ?? '')))
+    } catch (err) {
+      console.warn(`[uv] city search failed: ${(err as Error).message}`)
+      return fail('Couldn’t reach Open-Meteo. Check your connection and try again.', 'network')
+    }
+  })
+  ipcMain.handle('uv:today', async (): Promise<UvForecast | null> => {
+    const { place, sunAlerts } = store.get().settings.companion
+    if (!place || !sunAlerts) return null
+    const key = `${place.latitude},${place.longitude}`
+    // one fetch per half hour per place is plenty; a failure just means no alert
+    if (uvCache && uvCache.key === key && Date.now() - uvCache.at < 30 * 60_000) return uvCache.forecast
+    try {
+      const forecast = await fetchUv(place)
+      uvCache = { key, at: Date.now(), forecast }
+      return forecast
+    } catch (err) {
+      console.warn(`[uv] forecast unavailable: ${(err as Error).message}`)
+      return null
+    }
   })
   // The island's solid pill, in window coordinates, so drags over it are caught (see pollPill).
   ipcMain.handle('companion:setSolidRect', (_e, r: { x: number; y: number; w: number; h: number } | null) => {

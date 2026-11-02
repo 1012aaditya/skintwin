@@ -34,6 +34,7 @@ const api: SkinTwinApi = {
     islandInfo: () => ipcRenderer.invoke('companion:islandInfo'),
     onCommand: on('companion:command')
   },
+  uv: { search: (q) => ipcRenderer.invoke('uv:search', q), today: () => ipcRenderer.invoke('uv:today') },
   drop: {
     image: (jpegBase64) => ipcRenderer.invoke('drop:image', { jpegBase64 }),
     link: (url) => ipcRenderer.invoke('drop:link', { url })

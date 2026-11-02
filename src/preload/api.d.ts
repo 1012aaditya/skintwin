@@ -1,5 +1,6 @@
 import type { AskRequest, AskResponse, ProviderStatus, Result } from '../shared/assistant'
-import type { AnalysisRun, CaptureConditions, Snapshot } from '../shared/models'
+import type { AnalysisRun, CaptureConditions, Place, Snapshot } from '../shared/models'
+import type { UvForecast } from '../shared/sun'
 import type { Mutation } from '../shared/mutations'
 
 export type CompanionCommand =
@@ -51,6 +52,8 @@ export interface SkinTwinApi {
     islandInfo(): Promise<{ notch: boolean; barHeight: number; notchWidth: number }>
     onCommand(fn: (c: CompanionCommand) => void): () => void
   }
+  /** UV alerts from Open-Meteo: find a city (Settings), and today's forecast for the chosen one (null if unavailable). */
+  uv: { search(query: string): Promise<Result<Place[]>>; today(): Promise<UvForecast | null> }
   /** Something dropped onto the island: a product photo (already JPEG) or a product page link. */
   drop: { image(jpegBase64: string): Promise<void>; link(url: string): Promise<void> }
   circle: {

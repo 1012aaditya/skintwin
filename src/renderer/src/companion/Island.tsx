@@ -6,7 +6,8 @@ import { Orb, type OrbMood } from '@renderer/components/Orb'
 import { ReactionChips } from '@renderer/components/reactions'
 import { cn } from '@renderer/lib/cn'
 import { mutate, useProductMap, useSnapshot } from '@renderer/lib/store'
-import { activityTitle, localDay, routineTitle, type Activity, type InventoryActivity, type RoutineActivity } from '@shared/activity'
+import { activityTitle, localDay, routineTitle, type Activity, type InventoryActivity, type RoutineActivity, type SunActivity } from '@shared/activity'
+import { sunText, UV_SOURCE } from '@shared/sun'
 import { noticeText } from '@shared/inventory'
 import { handleDrop } from './drop'
 import type { CompanionContext } from './machine'
@@ -224,7 +225,7 @@ export function IslandBar({
           <motion.div key={shape} className="absolute inset-x-0 flex items-center gap-2.5 px-4" style={{ top, height: height - top }} initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0, transition: { delay: 0.08, duration: 0.2 } }} exit={{ opacity: 0, transition: { duration: 0.1 } }}>
             {shape === 'activityHover' && activity && (
               <div className="flex w-full flex-col gap-2 self-start pt-1">
-                {activity.kind === 'routine' ? <RoutineRow activity={activity} onOpen={() => setActivityOpen(true)} /> : <NoticeRow activity={activity} privacy={privacy} />}
+                {activity.kind === 'routine' ? <RoutineRow activity={activity} onOpen={() => setActivityOpen(true)} /> : activity.kind === 'sun' ? <SunRow activity={activity} /> : <NoticeRow activity={activity} privacy={privacy} />}
                 <div className="flex gap-2.5">
                   <Action onClick={onTalk} label="Talk">
                     <Mic />
@@ -384,6 +385,25 @@ function NoticeRow({ activity, privacy }: { activity: InventoryActivity; privacy
   )
 }
 
+/** Today's UV from the real forecast, with its source. */
+function SunRow({ activity }: { activity: SunActivity }) {
+  const n = activity.notice
+  return (
+    <div className="flex min-h-9 w-full items-center gap-2.5 rounded-[18px] bg-white/8 py-1 pr-1 pl-3" data-testid="sun-row">
+      <Sun className="h-4 w-4 shrink-0 text-orange-300" />
+      <span className="min-w-0 flex-1 leading-tight">
+        <span className="block truncate text-[12.5px]">{sunText(n)}</span>
+        <span className="block truncate text-[10.5px] text-white/50">
+          {UV_SOURCE} forecast · {n.place}
+        </span>
+      </span>
+      <button onClick={() => void mutate({ type: 'notice.dismiss', key: activity.key, day: localDay(new Date()) })} className="h-7 shrink-0 rounded-full bg-white/12 px-2.5 text-[12px] hover:bg-white/20">
+        Got it
+      </button>
+    </div>
+  )
+}
+
 /** Tick each due step — the same completions the Routine screen and the timeline use. */
 function RoutineList({ activity, onClose }: { activity: RoutineActivity; onClose: () => void }) {
   const loaded = !!useSnapshot()
@@ -451,6 +471,13 @@ function ReactRow({ productId, onBack }: { productId: string; onBack: () => void
 
 /** Right-hand ear: what the companion is doing, at a glance. */
 function Ear({ ctx, result, privacy, activity }: { ctx: CompanionContext; result: IslandResult | null; privacy: boolean; activity: Activity | null }) {
+  if (activity?.kind === 'sun' && ctx.state === 'idle')
+    return (
+      <span className="flex items-center gap-1 text-[12px] font-semibold text-orange-300" aria-label={activityTitle(activity)} data-testid="activity-ear">
+        <Sun className="h-3.5 w-3.5" />
+        {Math.round(activity.notice.uv)}
+      </span>
+    )
   if (activity?.kind === 'inventory' && ctx.state === 'idle') {
     const Icon = activity.notice.kind === 'low' ? Hourglass : CalendarX
     return <Icon className={cn('h-3.5 w-3.5', activity.notice.kind === 'expiry' && activity.notice.value < 0 ? 'text-rose-300' : 'text-amber-200')} aria-label={activityTitle(activity)} data-testid="activity-ear" />

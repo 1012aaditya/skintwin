@@ -1,9 +1,10 @@
 import { Bot, Check, Copy, Download, Globe, Keyboard, KeyRound, Mic, RefreshCcw, ShieldCheck, Trash2, Volume2 } from 'lucide-react'
-import { DEFAULT_SHORTCUTS } from '@shared/models'
+import { DEFAULT_SHORTCUTS, type Place } from '@shared/models'
+import { UV_SOURCE, UV_SOURCE_URL } from '@shared/sun'
 import { acceleratorFromEvent, prettyAccelerator } from '@shared/shortcuts'
 import { cn } from '@renderer/lib/cn'
 import { useEffect, useState, type ReactNode } from 'react'
-import { Badge, Button, Card, CardHeader, Select, Tabs, Toggle } from '@renderer/components/ui'
+import { Badge, Button, Card, CardHeader, Input, Select, Tabs, Toggle } from '@renderer/components/ui'
 import { useRoute } from '@renderer/lib/router'
 import { mutate, useDb, useProviders } from '@renderer/lib/store'
 import { toast } from '@renderer/lib/toast'
@@ -182,9 +183,87 @@ function CompanionSettings() {
           <HourRange label="Evening" value={c.pmWindow} onChange={(v) => set({ pmWindow: v })} />
         </div>
       )}
+      <SunSettings />
       <Toggle checked={c.launchOnStartup} onChange={(x) => set({ launchOnStartup: x })} label="Show companion when SkinTwin starts" />
       {c.style === 'orb' && <Toggle checked={c.alwaysOnTop} onChange={(x) => window.skintwin.companion.setPinned(x)} label="Keep companion above other windows" />}
     </Card>
+  )
+}
+
+/** UV alerts: pick a city once; its coordinates are the only thing sent to Open-Meteo. */
+function SunSettings() {
+  const db = useDb()
+  const c = db.settings.companion
+  const set = (patch: Partial<typeof c>) => mutate({ type: 'settings.update', patch: { companion: patch } })
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<Place[] | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const search = async () => {
+    setBusy(true)
+    setError(null)
+    const res = await window.skintwin.uv.search(query)
+    setBusy(false)
+    if (res.ok) setResults(res.data)
+    else setError(res.error)
+  }
+  const where = (p: Place) => [p.name, p.region, p.country].filter(Boolean).join(', ')
+  return (
+    <div className="space-y-2" data-testid="sun-settings">
+      <Toggle checked={c.sunAlerts} onChange={(x) => set({ sunAlerts: x })} label="Sun alerts" description="A morning heads-up when UV will reach 3 or more, and one midday reapply nudge when it’s 6 or more — from the real forecast for your city." />
+      {c.sunAlerts && (
+        <div className="space-y-2 pl-1">
+          {c.place && !results ? (
+            <p className="flex items-center gap-3 text-sm">
+              <span>
+                City: <b>{where(c.place)}</b>
+              </span>
+              <button className="text-[13px] text-lilac-200 underline" onClick={() => setResults([])}>
+                Change
+              </button>
+            </p>
+          ) : (
+            <form
+              className="flex gap-2"
+              onSubmit={(e) => {
+                e.preventDefault()
+                void search()
+              }}
+            >
+              <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Your city, e.g. Mumbai" aria-label="City for sun alerts" className="max-w-xs" />
+              <Button type="submit" size="sm" loading={busy} disabled={query.trim().length < 2}>
+                Find
+              </Button>
+            </form>
+          )}
+          {error && <p className="text-[13px] text-rose-300">{error}</p>}
+          {results && results.length > 0 && (
+            <ul className="max-w-md space-y-1">
+              {results.map((p) => (
+                <li key={`${p.latitude},${p.longitude}`}>
+                  <button
+                    className="w-full rounded-xl px-3 py-2 text-left text-sm hover:bg-white/10"
+                    onClick={async () => {
+                      if (await mutate({ type: 'settings.update', patch: { companion: { place: p } } }, `Sun alerts for ${p.name}`)) setResults(null)
+                    }}
+                  >
+                    {where(p)}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {results && results.length === 0 && query && !busy && <p className="text-[13px] text-ink-soft">No places found — try another spelling.</p>}
+          <p className="text-xs text-ink-faint">
+            UV data:{' '}
+            <button className="underline" onClick={() => window.skintwin.openExternal(UV_SOURCE_URL)}>
+              {UV_SOURCE}
+            </button>{' '}
+            (free, no account). Only the city name you search for and its coordinates are sent. If the forecast can’t be fetched, no alert is shown.
+          </p>
+        </div>
+      )}
+    </div>
   )
 }
 
