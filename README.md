@@ -1,6 +1,54 @@
 # SkinTwin
 
-A personal AI skincare companion for the desktop: a full app (profile, skin analysis, routines, inventory, product insights, comparison, saved products, shop), a **voice companion** that lives in a Dynamic-Island-style pill around the MacBook notch (or as a floating orb, if you prefer — Settings › Voice & assistant › Companion), a **browser extension** that sends the product you're viewing to the companion, and **Circle a product** (⌥⇧C): circle any product anywhere on screen to ask whether it suits your skin.
+**SkinTwin learns what actually works for your skin.**
+
+A desktop skincare companion for macOS. It measures your skin from an honest, unfiltered selfie (YouCam skin AI), checks any product you circle on screen against *your* profile with real, sourced research (Claude), and lives in a Dynamic Island around your MacBook's notch, so the verdict is one glance away.
+
+<p align="center">
+  <img src="docs/screenshots/island.jpg" alt="The SkinTwin island at the MacBook notch, showing Talk, Ask and Circle" width="760">
+</p>
+
+## The problem
+
+People buy skincare by guessing: a friend's tip, an influencer's favourite, a five-star review. Ingredient lists are hard to read, selfie apps run beauty filters, and a lot of online advice is sponsored or simply made up. Money gets wasted, and sometimes skin gets hurt.
+
+## What SkinTwin does
+
+| | |
+|---|---|
+| **Honest skin analysis** | A camera face guide checks distance, angle and lighting, and warns about beauty filters and Mac video effects, before anything is sent. YouCam's skin AI measures 10 concerns (hydration, oil, pores, texture, redness, radiance, wrinkles, dark circles, spots, acne) plus skin type and skin age, and shows **where** it found them on your face. The photo is never saved. |
+| **Circle any product (⌥⇧C)** | Draw a circle around a product anywhere on screen, whether it's a shop page, Instagram or a photo. Claude reads it, then researches the official ingredient list and real studies, and checks everything against your profile and routine. |
+| **Verdicts you can trust** | Every finding links to its source. Any link that didn't come back from a real web search is thrown away. Ingredients are never filled in from memory. A clear verdict: *good fit · mixed · not for you · can't tell yet*. |
+| **Dynamic Island** | A black pill around the notch: one-line verdicts with Details, live progress, voice (on-device Whisper), quick Talk / Ask / Circle / Skin actions, and drag and drop of a product photo or link. It hides your skin info during screen sharing (privacy mode). |
+| **It learns** | One-tap reactions ("this stung"), with the ingredients your reactions share spotted, honestly labelled as a pattern, not proof. Your routine as a live activity in the island. A skin timeline that connects scans, products and reactions. Expiry and running-low reminders. |
+| **Also** | Skin profile, routine planner, inventory, product insights, side-by-side comparison, saved products, and a Chrome extension that sends the page you're on. |
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/verdict.jpg" alt="Verdict for a CeraVe cleanser circled on Amazon, checked against the user's profile"><br><sub><b>Real verdict</b>: a CeraVe cleanser circled on Amazon India, checked against the user's profile.</sub></td>
+    <td width="50%"><img src="docs/screenshots/sources.jpg" alt="Research findings with source links"><br><sub><b>Sourced research</b>: studies, brand pages and dermatology sources, each one linked.</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/analysis.jpg" alt="YouCam skin analysis result"><br><sub><b>Skin analysis</b>: a real YouCam result.</sub></td>
+    <td><img src="docs/screenshots/home.jpg" alt="Your skin twin home screen"><br><sub><b>"Your twin" home</b>: today's routine, latest scan, what's working, what to avoid. <i>(test data)</i></sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/timeline.jpg" alt="Skin timeline"><br><sub><b>Skin timeline</b>: scans, products and reactions on one line. <i>(test data)</i></sub></td>
+    <td><img src="docs/screenshots/insights.jpg" alt="Product insights"><br><sub><b>Product insights</b>: ingredients, compatibility, alternatives. <i>(demo catalog)</i></sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/island-routine.jpg" alt="Routine as a live activity in the island"><br><sub><b>Routine in the island</b>: tick steps without opening the app.</sub></td>
+    <td><img src="docs/screenshots/island-drop.jpg" alt="Drop a product photo or link onto the island"><br><sub><b>Drag and drop</b>: drop a product photo or page link to check it.</sub></td>
+  </tr>
+</table>
+
+## Principles
+
+- **Never made up.** No invented analysis results, ingredients, prices, studies or partnerships. Mocks and demo data are labelled wherever they appear.
+- **Private by default.** Selfies are held in memory only and never saved. Page and screen content is treated as untrusted data. API keys live only in the main process, never in the UI bundle. Skin info is hidden from screen shares.
+- **Cosmetic guidance, not medical advice.** Persistent problems point you to a dermatologist.
+
+## Architecture
 
 ```
 ┌────────────── Electron main process (Node) ───────────────┐
@@ -16,6 +64,31 @@ A personal AI skincare companion for the desktop: a full app (profile, skin anal
        │ http://127.0.0.1:47821  (pairing token, extension origins only)
  Browser extension (MV3) — reads the current page only when clicked
 ```
+
+## Requirements
+
+- macOS (built and tested on macOS 26; the island is designed for notched MacBooks and falls back to a floating pill on other displays)
+- Node.js 22+ and npm
+- Optional API keys (the app runs without them, using labelled fallbacks):
+  - **Anthropic** for the assistant, circle-to-check and web research
+  - **YouCam (Perfect Corp) S2S API** for skin analysis
+
+## Configuration
+
+Copy `.env.example` to `.env` and fill in what you have. Never commit `.env`; it's git-ignored.
+
+| Variable | Purpose |
+|---|---|
+| `ANTHROPIC_API_KEY` | Claude assistant, circle-to-check, product research |
+| `SKINTWIN_LLM_MODEL` | Override the Claude model (default `claude-opus-5-5`) |
+| `YOUCAM_API_KEY`, `YOUCAM_API_BASE` | YouCam skin analysis |
+| `STT_PROVIDER` | `local` (on-device Whisper, the default), `openai`, `elevenlabs`, or `off` |
+| `STT_LOCAL_MODEL` | On-device Whisper model (default `onnx-community/whisper-base.en`) |
+| `OPENAI_API_KEY`, `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `TTS_PROVIDER` | Optional cloud speech |
+| `SKINTWIN_DEMO_CATALOG`, `SKINTWIN_ENABLE_MOCKS` | Dev-only demo catalog and mock analysis (labelled in the UI) |
+| `SKINTWIN_BRIDGE_PORT` | Port for the browser-extension bridge (default 47821) |
+
+**macOS permissions** (asked when first used): Camera (skin scan), Microphone (voice), and Screen & System Audio Recording (circle a product). While developing, grant them to **Electron**.
 
 ## Quick start
 
@@ -33,7 +106,7 @@ With no keys at all the app still works, including voice input (on-device Whispe
 | `npm run dev` | Run with hot reload (demo catalog + mocks on) |
 | `npm run build` | Production build into `out/` |
 | `npm run package:mac` | Build an unsigned `SkinTwin.app` into `dist/app/` |
-| `npm run typecheck` / `npm run lint` / `npm test` | Static checks + 66 unit/integration tests |
+| `npm run typecheck` / `npm run lint` / `npm test` | Static checks + 160+ unit/integration tests |
 | `npm run smoke` | Launches the real app (temp data folder), clicks through journeys A–I, writes screenshots to `dist/smoke/` |
 
 **Browser extension:** `chrome://extensions` → Developer mode → *Load unpacked* → pick the `extension/` folder → click the toolbar icon and paste the pairing code from **Settings › Browser extension**.
@@ -89,10 +162,17 @@ The local file was chosen over a database server because this is single-user and
 | Circle a product (⌥⇧C) | **Live and tested** in the real app: screen capture → circle overlay → Claude reads the circled pixels → companion verdict. Ingredients are only used if they're legible in the circle (never filled in from memory); circling a product's ingredient list right after its name adds them. It then **researches the product on the web** (Claude web search + fetch): the official ingredient list and what studies, dermatology bodies and regulators say about the ingredients that matter for your profile. Every claim is shown with its source link, and any link that didn't come back from the actual search is dropped. Web search is billed per search on the Anthropic account. Needs macOS **Screen & System Audio Recording** permission for SkinTwin (Electron while developing). |
 | Product catalog / marketplace | **Demo data only**, labelled everywhere: key ingredients only and illustrative prices. "Visit" opens brand homepages. There are no partnerships, offers or in-app checkout. |
 
+## Roadmap
+
+- Sun alerts from real UV forecasts (Open-Meteo)
+- A real product catalog of brands popular in India, with real photos, full ingredient lists and sources
+- One consistent product page everywhere: verdict, ingredients, research, your history, where to buy, alternatives
+- A phone companion, plus a hosted backend for keys, usage limits and a shared research cache
+
 ## Test results (this build)
 
-- `npm run typecheck`: clean · `npm run lint`: clean · `npm test`: **66/66 pass**
-- `npm run smoke`: **20/20 checks pass**, 0 renderer errors. Covers onboarding → profile saved; routine add + reorder saved; inventory running-low → restock; mock analysis saved and flagged; bridge rejects a bad token and accepts a valid product; companion product-detected → analysis → comparison → answer (labelled) → save → appears in the main app; mark-owned; add an alternative to the evening routine; page-read failure; voice without STT.
+- `npm run typecheck`: clean · `npm run lint`: clean · `npm test`: **160+ tests pass**
+- `npm run smoke`: **all checks pass**, 0 renderer errors. Covers onboarding → profile saved; routine add + reorder saved; inventory running-low → restock; mock analysis saved and flagged; bridge rejects a bad token and accepts a valid product; companion product-detected → analysis → comparison → answer (labelled) → save → appears in the main app; mark-owned; add an alternative to the evening routine; page-read failure; voice without STT.
 - `npm run package:mac`: unsigned `.app` builds and launches. Production mode turns off demo data and mocks.
 
 ## Known limitations
